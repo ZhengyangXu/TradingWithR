@@ -4,12 +4,7 @@
 # Authors found that this behavior was stronger over those stocks that were more
 # liquid, more widely held, more volatile (controled for liquidity)
 
-# TODO / DONE:
-# --use adjusted prices-- DONE.
-# --combine both time periods into one file DONE.
-# --legend-- DONE.
-# --arithmetic or log returns? ARITHMETIC. DONE.
-# --make actual $ demo with quantstrat DONE.
+# TODO
 # - run on array of stocks all at once
 # - which stocks work best? which are worst?
 # - do pairs trading like Friesen suggested

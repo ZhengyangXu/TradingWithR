@@ -13,12 +13,11 @@ pollutantmean <- function(directory, pollutant, id = 1:332) {
     ## in the 'id' vector (ignoring NA values)
 
     # pad ints with leading zeroes: sprintf('%03d', x)
-    zs = function(x) sprintf('%03d', x)
 
     l = NA
 
     for (i in id) {
-        l = c(l, read.csv(paste(directory, '/', zs(i), '.csv', sep=''))[[pollutant]])
+        l = c(l, read.csv(paste(directory, '/', sprintf('%03d', i), '.csv', sep=''))[[pollutant]])
     }
 
     sprintf('%.3f', mean(l, na.rm = T))

@@ -12,10 +12,9 @@ complete <- function(directory, id = 1:332) {
     ## ...
     ## where 'id' is the monitor ID number and 'nobs' is the
     ## number of complete cases
-    zs = function(x) sprintf('%03d', x)
     mdf = NULL
     for (i in id) {
-        t = read.csv(paste(directory, '/', zs(i), '.csv', sep=''))
+        t = read.csv(paste(directory, '/', sprintf('%03d', i), '.csv', sep=''))
         n = sum(complete.cases(t))
         mdf = rbind(mdf, c(i, n))
     }

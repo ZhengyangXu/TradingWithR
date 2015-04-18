@@ -16,7 +16,7 @@ complete <- function(directory, id = 1:332) {
     mdf = NULL
     for (i in id) {
         t = read.csv(paste(directory, '/', zs(i), '.csv', sep=''))
-        n = length(complete.cases(t)[complete.cases(t) == T])
+        n = sum(complete.cases(t))
         mdf = rbind(mdf, c(i, n))
     }
     mdf = as.data.frame(mdf)

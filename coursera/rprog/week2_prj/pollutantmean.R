@@ -21,5 +21,5 @@ pollutantmean <- function(directory, pollutant, id = 1:332) {
         l = c(l, read.csv(paste(directory, '/', zs(i), '.csv', sep=''))[[pollutant]])
     }
 
-    mean(l, na.rm = T)
+    sprintf('%.3f', mean(l, na.rm = T))
 }

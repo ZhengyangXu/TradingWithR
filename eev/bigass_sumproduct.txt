@@ -1,0 +1,42 @@
+=IF(
+    OR(E7>10,F7>10),
+    "",
+    (
+        SUMPRODUCT(
+            INDEX(E$1:E$20000,MAX(ROW(E7)-$G$1+1,4),1):E7,
+            INDEX(F$1:F$20000,MAX(ROW(F7)-$G$1+1,4),1):F7
+        )
+         /
+        SUMPRODUCT(
+            INDEX(E$1:E$20000,MAX(ROW(E7)-$G$1+1,4),1):E7,
+            INDEX(E$1:E$20000,MAX(ROW(E7)-$G$1+1,4),1):E7
+        )
+    )
+    / 100
+    )
+
+    (
+        SUMPRODUCT(
+            INDEX(E$1:E$20000,4,1):E7, # should ret E4:E7??
+            INDEX(F$1:F$20000,4,1):F7
+        )
+         /
+        SUMPRODUCT(
+            INDEX(E$1:E$20000,4,1):E7,
+            INDEX(E$1:E$20000,4,1):E7
+        )
+    )
+    / 100
+
+    (
+        SUMPRODUCT(
+            INDEX(E$1:E$20000,889,1):E7,
+            INDEX(F$1:F$20000,889,1):F7
+        )
+         /
+        SUMPRODUCT(
+            INDEX(E$1:E$20000,889,1):E7,
+            INDEX(E$1:E$20000,889,1):E7
+        )
+    )
+    / 100

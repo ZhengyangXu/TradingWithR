@@ -17,8 +17,8 @@
 Sys.setenv(TZ="UTC")
 final_g     = NULL
 final_p     = NULL
-begin_year  = 1994
-end_year    = 2014
+begin_year  = 2015
+end_year    = 2015
 symbol      = "V"
 # Why does V start out as 115k on b&h?
 tickers      = c('VZ', 'T', 'PFE')
@@ -46,8 +46,8 @@ for (tick in tickers) {
 
   for (y in begin_year:end_year) {
     for (i in 1:12) {
+        if ((y == 2015) && (i > 7)) break;
       if (i == 12) {
-        if (y == 2014) break;
         tmp_g      = rbind(first(last(get(tick)[paste(y, i, sep="-")],"5 days")),
                            last(first(get(tick)[paste((y+1), 1, sep="-")],"3 days")))
         tmp_g_delt = Delt(Ad(tmp_g),type=return_type)[nrow(tmp_g)]

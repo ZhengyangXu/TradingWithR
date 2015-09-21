@@ -123,3 +123,6 @@ last_slope = myivprice$slope[nrow(myivprice)]
 print(sprintf("Average slope: %1.4f%%", avg_slope*100))
 print(sprintf("Last 22 days:  %1.4f%%", last_slope*100))
 print(sprintf("Those 2 avg'd: %1.4f%%", mean(c(avg_slope, last_slope))*100))
+
+filtered_data = rbind(mydata[mydata[mydata$Delta > 4,]$Delta < 96,], 
+                      mydata[mydata[mydata$Delta < -4,]$Delta > -96,])

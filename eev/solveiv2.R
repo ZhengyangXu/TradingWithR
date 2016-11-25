@@ -31,9 +31,13 @@
 #    M 'NIV Error'  = Aggregate formula NormIV - EstNormIV 
 #                     (here you're comparing the *normal* IV found through aggregate formula with the estimate 
 #                     from the proprietary volatility model)
+#                     But you are simultaneously using the IEV you're currently estimating because it's
+#                     in the aggregate formula and one of the optimizer parameters???
 #                     BUT the aggregate formula refers back to the currently-being-optimized IEV value
 #    N 'NIVErr SQ'  = (NIVErr)^2
 #    O 'VW Err'     = NIVErr*Vega*(Crazy NV/IV Multiplier with hard coded constants?)
+#                     He denotes this in dollars/cents, because that's how Vega is quoted. This price
+#                     error isn't total per share price (can't be, haven't estimated Greeks yet)
 #    P 'VWE SQ'     = (VWErr)^2
 #    Q 'UVAL'       = NIVErr*(-1*Vega)*(Crazy NV/IV Multiplier?)*100/(user-input option multiplier)
 #                     Find under/overpriced options on a per share basis
@@ -41,14 +45,17 @@
 
 # TODO figure out:
 #    What is that crazy multiplier thing? (is it in the book? what page?)
-#       Maybe explained in ch 7 with the vertical / horizontal skew formulas. sort of.
+#       TN30 Vega? Chapter 4, figure 4.5? It's not the same, because it deals with actual time to expiration
+#       and this multiplier thing deals with % normal vs. trade days remaining.
+#       Whole premise is that volatility mean-reverts, and shorter-dated options' IV changes more than
+#       longer-dated options for the same 1% increase/decrease in ATM normal IV
 #    How does the maximum skew fit in? (is it in the book? what page?)
 #    DONE Why does the VW Err value match the UVAL even when input params are random?
 #       Because the only thing UVAL is doing is flipping the sign and adjusting for # options/contract
 #    DONE Use 'bizdays' package for business day checks
 #    So you have the model's NIV through the ATMNIV + vert skew, then you compare that to
-#    the NIV derived through the aggregate formula? and figure out the IEV that results in the minimum
-#    error across the matrix? But where in the aggregate formula is the strike price? 
+#       the NIV derived through the aggregate formula? and figure out the IEV that results in the minimum
+#       error across the matrix? But where in the aggregate formula is the strike price? 
 
 library(bizdays)
 library(GenSA)
@@ -59,6 +66,14 @@ uiMinA    = 0.011
 uiMaxParm = 6     # 600%
 uiMaxSkew = 1
 uiOptMult = 100
+uiHolidays = c('2014-01-01', '2014-01-20', '2014-02-17',
+             '2014-04-18', '2014-05-26', '2014-07-03',
+             '2014-09-01', '2014-11-27', '2014-12-25',
+             '2015-01-01', '2015-01-19', '2015-02-16',
+             '2015-04-03', '2015-05-25', '2015-07-03',
+             '2015-09-07', '2015-11-26', '2015-12-25',
+             '2016-01-01', '2016-01-18', '2016-02-15',
+             '2016-03-25')
 
 # Optimizer parameters are only constants because they directly feed back into 
 # formulas in Excel which have the objective function in it. So what's the obj
@@ -87,3 +102,7 @@ fEstNIV = function(slopeParm, ovvSkew, curveParm, atmniv) {
 fATMNIV = function(A, B, C, t) {
   return(A*B*(1-exp(-C*t)))
 }
+
+# Set up calendar
+mycal = Calendar(holidays = uiHolidays, start.date = "2014-01-01", end.date="2015-12-31", weekdays=c("saturday", "sunday"))
+# sample bizdays call: bizdays("2014-01-02", "2014-01-21", mycal) = 12

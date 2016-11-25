@@ -44,21 +44,26 @@
 #                     If it's 100 shares per contract then UVAL = -1*VW Err
 
 # TODO figure out:
-#    What is that crazy multiplier thing? (is it in the book? what page?)
+#    DONE What is that crazy multiplier thing? (is it in the book? what page?)
 #       TN30 Vega? Chapter 4, figure 4.5? It's not the same, because it deals with actual time to expiration
-#       and this multiplier thing deals with % normal vs. trade days remaining.
+#        and this multiplier thing deals with % normal vs. trade days remaining.
 #       Whole premise is that volatility mean-reverts, and shorter-dated options' IV changes more than
-#       longer-dated options for the same 1% increase/decrease in ATM normal IV
-#    How does the maximum skew fit in? (is it in the book? what page?)
+#        longer-dated options for the same 1% increase/decrease in ATM normal IV.
+#       Is this just a different form of the TN30 Vega formula because its input is a 
+#        ratio of time instead of time itself? How could you re-work/prove it?
+#    DONE How does the maximum skew fit in?
+#       Only explained in the book as "capping the max VSC avoids extreme and unusual
+#         volatility skew solution and this value should not be modified."
 #    DONE Why does the VW Err value match the UVAL even when input params are random?
 #       Because the only thing UVAL is doing is flipping the sign and adjusting for # options/contract
 #    DONE Use 'bizdays' package for business day checks
 #    So you have the model's NIV through the ATMNIV + vert skew, then you compare that to
 #       the NIV derived through the aggregate formula? and figure out the IEV that results in the minimum
-#       error across the matrix? But where in the aggregate formula is the strike price? 
+#       error across the matrix 
 
 library(bizdays)
 library(GenSA)
+library(rootSolve)
 
 # User inputs:
 uiMinIEV  = 0.011 # 1.1%
@@ -101,6 +106,33 @@ fEstNIV = function(slopeParm, ovvSkew, curveParm, atmniv) {
 # Make sure you're calling this with the correct put/call parameters!!
 fATMNIV = function(A, B, C, t) {
   return(A*B*(1-exp(-C*t)))
+}
+
+# Replicate that hard-coded multiplier
+fIVNVMult = function(x) {
+  return(1.7628*(x^2)-1.7138*(x)+0.9066)
+}
+
+# Limit max vertical skew
+fOVVSkew = function(K, U, divadj, t, maxSkew) {
+  #ln(Strike Price / (underlying price+dividend adjustment)) / sqrt(YrsToExp),
+  #but he tries to get the max between this skew and the *negative* user input skew
+  #***seems like he either wants a skew value, maximum skew, or 0 depending.***
+  if (t > 0) 
+    return (max(min(log(K / (U+divadj)) / (t^0.5), uiMaxSkew), -1*uiMaxSkew))
+  else 
+    return (0)
+}
+
+fNormIV = function(busDays, earnDays, normDays, IEV, calcIV) {
+  # uses calculated IV which will end up calling NewtRaph / rootSolve function
+  return((max(busDays*calcIV^2-earnDays*IEV^2, 0) / normDays)^(0.5))
+}
+
+fcalcIV = function(K, U, divadj, t, avgIV, midPrice, CorP) {
+  # avgIV is average of all "Mid IV" from broker platform of whole matrix
+  # guessing this should calculate the IV per BSOPM
+  # maybe use rootSolve here
 }
 
 # Set up calendar

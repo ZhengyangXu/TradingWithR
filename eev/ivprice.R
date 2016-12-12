@@ -2,12 +2,12 @@
 # first line of data is the underlying stock
 
 # these will prob change every time
-analysis_date   = "08/27/2015"
+analysis_date   = "2015-08-27"
 #analysis_datep1 = analysis_date + 1 # broken
-first_u_date    = "08/28/2015"
-second_u_date   = "08/28/2015"
-next_earn_date  = "08/27/2015"
-next_ext_date   = "08/07/2015"
+first_u_date    = "2015-08-28"
+second_u_date   = "2015-08-28"
+next_earn_date  = "2015-08-27"
+next_ext_date   = "2015-08-07"
 datecode        = "20150730"
 timecode        = "1430"
 ticker          = "ea"

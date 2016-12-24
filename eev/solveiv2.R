@@ -129,12 +129,15 @@ fNormIV = function(busDays, earnDays, normDays, IEV, calcIV) {
   return((max(busDays*calcIV^2-earnDays*IEV^2, 0) / normDays)^(0.5))
 }
 
-fcalcIV = function(K, U, divadj, t, avgIV, midPrice, CorP) {
+fcalcIV = function(K, U, divadj, t, avgIV, midPrice, optType) {
   # avgIV is average of all "Mid IV" from broker platform of whole matrix
   # guessing this should calculate the IV per BSOPM
   # maybe use rootSolve here
 }
 
 # Set up calendar
-mycal = Calendar(holidays = uiHolidays, start.date = "2014-01-01", end.date="2015-12-31", weekdays=c("saturday", "sunday"))
+mycal = Calendar(holidays = uiHolidays, 
+                 start.date = "2014-01-01", 
+                 end.date="2015-12-31", 
+                 weekdays=c("saturday", "sunday"))
 # sample bizdays call: bizdays("2014-01-02", "2014-01-21", mycal) = 12

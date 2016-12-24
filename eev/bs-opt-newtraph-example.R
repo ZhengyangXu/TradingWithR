@@ -81,7 +81,9 @@ cat("\nExample 1: data taken from http://www.maxi-pedia.com/Black+Scholes+model\
 ivol <- ImpliedBSVol(volGuess=0.1, Spot, Strike, riskfr, dividend,
                      TTM, Cprice, verbose=TRUE)
 cat("\nImplied Black-Scholes volatility: ",ivol*100,"%\n\n",sep="")
-
+rq_iv = EuropeanOptionImpliedVolatility("call", Cprice, Spot, Strike, dividend,
+                                        riskfr, TTM, 0.1)
+rq_iv[1]
 
 ## Example data taken from http://www.maxi-pedia.com/Black+Scholes+model
 Spot     <- 1500
@@ -103,13 +105,13 @@ ivol <- ImpliedBSVol(volGuess=0.1, Spot, Strike, riskfr, dividend,
                      TTM, Cprice, verbose=TRUE)
 cat("\nImplied Black-Scholes volatility: ",ivol*100,"%\n",sep="")
 
-## Example data taken from EA EEV example 
-Spot     <- 72.06
-Strike   <- 80
+## Example data taken from AKAM EEV example 
+Spot     <- 47.29
+Strike   <- 46
 riskfr   <- 0.005
 dividend <- 0
-TTM      <- 6/252
-Cprice   <- 0.315
+TTM      <- 2/252
+Cprice   <- 3.05
 
 cat("\nExample 2: data taken from http://voices.yahoo.com/the-black-scholes-formula-practice-problems-solutions-1297845.html?cat=4\n
     Spot     <- 72.06
@@ -122,3 +124,6 @@ cat("\nExample 2: data taken from http://voices.yahoo.com/the-black-scholes-form
 ivol <- ImpliedBSVol(volGuess=0.1, Spot, Strike, riskfr, dividend,
                      TTM, Cprice, verbose=TRUE)
 cat("\nImplied Black-Scholes volatility: ",ivol*100,"%\n",sep="")
+rq_iv = EuropeanOptionImpliedVolatility("call", Cprice, Spot, Strike, dividend,
+                                        riskfr, TTM, 0.1)
+rq_iv[1]

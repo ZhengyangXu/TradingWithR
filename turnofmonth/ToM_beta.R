@@ -14,6 +14,8 @@
 # - which stocks work best? which are worst?
 # - do pairs trading like Friesen suggested
 # - mid-month effect?
+library(PerformanceAnalytics)
+library(quantmod)
 
 Sys.setenv(TZ="UTC")
 final_g    = NULL
@@ -21,8 +23,8 @@ final_p    = NULL
 vol_bh     = NULL
 vol_tm     = NULL
 perfdiff   = NULL
-begin_year = 1994
-end_year   = 2014
+begin_year = 2014
+end_year   = 2016
 symbol     = "DJIA"
 #tickers     = c('MMM', 'AXP', 'T', 'BA', 'CAT', 'CVX', 'CSCO', 'KO', 'DIS', 'DD',
 #                'XOM', 'GE', 'GS', 'HD', 'IBM', 'INTC', 'JNJ', 'JPM', 'MCD', 'MRK',
@@ -33,7 +35,7 @@ tickers     = c('MMM', 'AXP', 'T', 'BA', 'CAT', 'CVX', 'CSCO', 'KO', 'DIS', 'DD'
 
 return_type = "arithmetic" # 'log' or 'arithmetic'
 
-#getSymbols(paste(tickers),from=paste((begin_year-1),'01','01',sep='-'))
+getSymbols(paste(tickers),from=paste((begin_year-1),'01','01',sep='-'))
 tickers = gsub("[][^]", "", tickers)
 for (symbol in tickers) {
    final_g = NULL
@@ -41,7 +43,7 @@ for (symbol in tickers) {
    for (y in begin_year:end_year) {
      for (i in 1:12) {
        if (i == 12) {
-         if (y == 2014) break;
+         if (y == 2016) break;
          tmp_g      = rbind(first(last(get(symbol)[paste(y, i, sep="-")],"5 days")),
                             last(first(get(symbol)[paste((y+1), 1, sep="-")],"3 days")))
          tmp_g_delt = Delt(Ad(tmp_g),type=return_type)[nrow(tmp_g)]

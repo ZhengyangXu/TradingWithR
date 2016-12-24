@@ -17,9 +17,10 @@
 Sys.setenv(TZ="UTC")
 final_g     = NULL
 final_p     = NULL
-begin_year  = 1985
-end_year    = 2015
-symbol      = "^GSPC"
+begin_year  = 2008
+end_year    = 2016
+#symbol      = "^GSPC"
+symbol      = "NKE"
 return_type = "arithmetic" # 'log' or 'arithmetic'
 initCash    = 100000
 initBal     = NULL
@@ -35,7 +36,7 @@ initBal    = initPrice * initShares
 
 for (y in begin_year:end_year) {
   for (i in 1:12) {
-    if ((y == 2015) && (i > 7)) break;
+    if ((y == 2016) && (i > 11)) break;
     if (i == 12) {
       tmp_g      = rbind(last(get(symbol)[paste(y, i, sep="-")],"5 days"),
                          first(get(symbol)[paste((y+1), 1, sep="-")],"3 days"))
@@ -90,8 +91,8 @@ legend("topleft", # Legend position
        cex=0.75)
 
 # compare to buy-and-hold
-#bandh = Delt(Ad(to.monthly(get(symbol))),
-#             type=return_type)[paste(paste(begin_year,"02",sep='-'),end_year,sep='::')]
+bandh = Delt(Ad(to.monthly(get(symbol))),
+             type=return_type)[paste(paste(begin_year,"02",sep='-'),end_year,sep='::')]
 
 # Calculate cumulative returns
 #c_bandh = cumsum(bandh)
@@ -121,5 +122,5 @@ legend("topleft", # Legend position
 #colnames(summary) = c("T-3 to T+3", "Buy & Hold", "T+4 to T-4")
 
 # Other fun graphs
-# charts.PerformanceSummary(bandh)
-# charts.PerformanceSummary(final_g)
+charts.PerformanceSummary(bandh)
+charts.PerformanceSummary(final_g)

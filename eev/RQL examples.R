@@ -1,15 +1,15 @@
 library("RQuantLib")
 library("bizdays")
 # Static example data taken from EA EEV example 
-Spot     <- 72.05
+underly  <- 72.05
 Strike   <- 81
 riskfr   <- 0.005
 dividend <- 0
 TTM      <- 6/252
 Cprice   <- 0.355
 
-rq_iv = EuropeanOptionImpliedVolatility("call", Cprice, Spot, Strike, dividend,
-                                        riskfr, TTM, 0.1)
+rq_iv = EuropeanOptionImpliedVolatility("call", Cprice, underly, Strike, 
+                                        dividend, riskfr, TTM, 0.1)
 cat("Excel thinks Calculated IV is 60.32%, but RQL thinks it's: ", 
     rq_iv[1]*100, "%")
 ##############################
@@ -50,41 +50,48 @@ mydata       = mydata[-1,]                        # top row is underlying
 # Set up only to use those strikes with bids/asks, look for Date
 matrixComplete = mydata[!is.na(mydata$Date),]
 
-# What other filters apply for the IEV calculation?
+# What other filters apply for the IEV calculation? After bids/asks, we are
+# left with 334 but Brian only has 271
 
 # Do all the date math
+# sample bizdays call: bizdays("2014-01-02", "2014-01-21", mycal) = 12
 # Set up calendar
 mycal = Calendar(holidays = uiHolidays, 
                  start.date = cal_begin, 
                  end.date=cal_end, 
                  weekdays=c("saturday", "sunday"))
-
-# sample bizdays call: bizdays("2014-01-02", "2014-01-21", mycal) = 12
+# Make dates R friendly, be sure to filter our NAs before this
 matrixComplete$expISO = as.Date(as.character(matrixComplete$Exp.Date), 
-                                "%y%m%d")             # make sure no NAs
+                                "%y%m%d")
+
+# Calculate total days
 matrixComplete$ND     = bizdays(analysis_date, 
                                 matrixComplete$expISO, 
-                                mycal)                # total days
-# if next earn date < expdate, 1
-# if next earn date > expdate, 0
-# else 1+floor(bizdays(next earn date, expdate) / 63)
-#matrixComplete$ED     = floor(matrixComplete$ND / 63) # earnings days
-# ur in R use ur vectorz 
-#a = next_earn_date > matrixComplete$expISO
-#b = next_earn_date < matrixComplete$expISO
+                                mycal)
+
+# ur in R use ur vectorz 4 date maffs
 matrixComplete$ED     = 1+floor(bizdays(next_earn_date, 
                                         matrixComplete$expISO,
                                         mycal) / 63)
 matrixComplete$BD     = matrixComplete$ND - matrixComplete$ED
 
+# Set up some other helper columns / values
+matrixComplete$avgp   = (matrixComplete$Bid + matrixComplete$Asked) / 2
+matrixComplete$type[matrixComplete$Call.Put == "C"] = "call"
+matrixComplete$type[matrixComplete$Call.Put == "P"] = "put"
+
+# Calculate IV using BSOPM 
 for (i in 1:length(matrixComplete$Strike.Price)) {
-  matrixComplete[i]$CalcIV = 
-    AmericanOptionImpliedVolatility("call", 
-                                    matrixComplete[i]$Last,
-                                    underly,
-                                    matrixComplete[i]$Strike.Price,
-                                    dividend, 
-                                    riskfr, 
-                                    matrixComplete[i]$ND,
-                                    0.1)
+  if (is.na(matrixComplete$avgp[i])) break
+  else {
+    matrixComplete$CalcIV[i] = 
+      AmericanOptionImpliedVolatility(matrixComplete$type[i], 
+                                      matrixComplete$avgp[i],
+                                      underly,
+                                      matrixComplete$Strike.Price[i],
+                                      dividend, 
+                                      riskfr, 
+                                      matrixComplete$ND[i],
+                                      0.1)
+  }
 }

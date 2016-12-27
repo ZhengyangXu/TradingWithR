@@ -8,10 +8,10 @@ dividend <- 0
 TTM      <- 6/252
 Cprice   <- 0.355
 
-#rq_iv = EuropeanOptionImpliedVolatility("call", Cprice, underly, Strike, 
-#                                        dividend, riskfr, TTM, 0.1)
-#cat("Excel thinks Calculated IV is 60.32%, but RQL thinks it's: ", 
-#    rq_iv[1]*100, "%")
+rq_iv = AmericanOptionImpliedVolatility("call", Cprice, underly, Strike, 
+                                        dividend, riskfr, TTM, 0.1)
+cat("Excel thinks Calculated IV is 60.32%, but RQL thinks it's: ", 
+    rq_iv[1]*100, "%")
 ##############################
 
 # example on whole array to see why excel != RQL
@@ -53,13 +53,6 @@ matrixComplete = mydata[!is.na(mydata$Date),]
 # What other filters apply for the IEV calculation? After bids/asks, we are
 # left with 334 but Brian only has 271
 
-# No options at expiration
-matrixComplete = matrixComplete[matrixComplete$ND != 1,]
-
-# No options without quotes
-matrixComplete$avgp   = (matrixComplete$Bid + matrixComplete$Asked) / 2
-matrixComplete        = matrixComplete[!is.na(matrixComplete$avgp),]
-
 # Do all the date math
 # sample bizdays call: bizdays("2014-01-02", "2014-01-21", mycal) = 12
 # Set up calendar
@@ -82,6 +75,13 @@ matrixComplete$ED     = 1+floor(bizdays(next_earn_date,
                                         mycal) / 63)
 matrixComplete$BD     = matrixComplete$ND - matrixComplete$ED
 
+# No options at expiration
+matrixComplete        = matrixComplete[matrixComplete$ND != 1,]
+
+# No options without quotes
+matrixComplete$avgp   = (matrixComplete$Bid + matrixComplete$Asked) / 2
+matrixComplete        = matrixComplete[!is.na(matrixComplete$avgp),]
+
 # Set up some other helper columns / values
 matrixComplete$type[matrixComplete$Call.Put == "C"] = "call"
 matrixComplete$type[matrixComplete$Call.Put == "P"] = "put"
@@ -95,6 +95,22 @@ for (i in 1:length(matrixComplete$Strike.Price)) {
                                     matrixComplete$Strike.Price[i],
                                     dividend, 
                                     riskfr, 
-                                    matrixComplete$ND[i],
+                                    matrixComplete$ND[i]/252,
                                     0.1)
 }
+
+# try out one of them there functions
+maxOVVSkew = 1
+matrixComplete$OVVSkew = fOVVSkew(matrixComplete$Strike.Price,
+                                  underly,
+                                  dividend,
+                                  matrixComplete$ND/252,
+                                  maxOVVSkew)
+
+# fake iev value to test function
+iev = 1.34
+matrixComplete$NormIV = fNormIV(matrixComplete$ND, 
+                                matrixComplete$ED, 
+                                matrixComplete$BD,
+                                iev,
+                                matrixComplete$CalcIV)

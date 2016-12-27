@@ -21,7 +21,7 @@ second_u_date   = "2015-07-31"
 next_earn_date  = "2015-07-30"
 next_ext_date   = "2015-08-07"
 cal_begin       = "2014-01-01"
-cal_end         = "2017-12-31"
+cal_end         = "2019-01-01"
 datecode        = "20150730"
 timecode        = "1430"
 ticker          = "ea"
@@ -112,9 +112,10 @@ matrixComplete$OVVSkew = fOVVSkew(matrixComplete$Strike.Price,
                                   maxOVVSkew)
 
 # fake iev value to test function
-iev = 1.34
+iev = 1.1892
 matrixComplete$NormIV = fNormIV(matrixComplete$ND, 
                                 matrixComplete$ED, 
                                 matrixComplete$BD,
                                 iev,
                                 matrixComplete$CalcIV)
+

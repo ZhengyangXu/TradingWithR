@@ -95,7 +95,7 @@ uiHolidays = c('2014-01-01', '2014-01-20', '2014-02-17',
 # Optimizer parameters are only constants because they directly feed back into 
 # formulas in Excel which have the objective function in it. So what's the obj
 # function this time around? Is it just the output of the VWE Sq which then 
-# calls other functions?
+# calls other functions? [yes]
 # Ac, Bc, Cc, Ap, Bp, Cp, VSA, VSB, VCA, VCB, IEV
 # [0] [1] [2] [3] [4] [5] [6]  [7]  [8]  [9]  [10]
 optLower = numeric(11) # TODO set defaults here
@@ -145,15 +145,41 @@ fNormIV = function(busDays, earnDays, normDays, IEV, calcIV) {
   return((pmax(busDays*calcIV^2-earnDays*IEV^2, myZeroes) / normDays)^(0.5))
 }
 
-fcalcIV = function(K, U, divadj, t, avgIV, midPrice, optType) {
+fcalcIV = function(optType, midPrice, U, K, divadj, riskfr, t, avgIV) {
   # avgIV is average of all "Mid IV" from broker platform of whole matrix
-  # guessing this should calculate the IV per BSOPM
-  # maybe use rootSolve here
+  # This should calculate the IV per BSOPM. Only doing this for short name.
+  # TODO: check to see if user has specified EU options
+  return (AmericanOptionImpliedVolatility(optType, midPrice, U, K, divadj, 
+                                          riskfr, t, avgIV))
+}
+
+# TODO find a way to exclude individual options if they have pricing errors
+fpriceErr = function(vweSQ) {
+  return ((sum(vweSQ)/length(vweSQ))^0.5)
+}
+
+# find error priced in cents? in terms of vega?
+fvwErr = function(normIV, estNormIV, vega, ivNVMult) {
+  return((normIV-estNormIV)*vega*ivNVMult)
+}
+
+# aggregate IV formula solving for non-earnings vol
+fnormIV = function(ND, calcIV, ED, iev, BD) {
+  return((ND*calcIV^2-ED*iev^2)/BD^(0.5))
 }
 
 # Set up calendar
 mycal = Calendar(holidays = uiHolidays, 
                  start.date = "2014-01-01", 
-                 end.date="2015-12-31", 
+                 end.date="2019-01-01", 
                  weekdays=c("saturday", "sunday"))
 # sample bizdays call: bizdays("2014-01-02", "2014-01-21", mycal) = 12
+
+# Set up magic optimization problem. If you had a cool function, you'd just
+# call minimizeThis(fpriceErr(vweSQ))
+# but vweSQ is an array of squared vwErr: fvwErr()^2
+# but fvwErr() needs to call fnormIV() and fEstNIV()
+#   and fnormIV() has *as its input* the current iev, which is a value in the
+#     array being passed to the optimizer
+#   and fEstNIV() also has as its input some current values in the array
+#     being optimized

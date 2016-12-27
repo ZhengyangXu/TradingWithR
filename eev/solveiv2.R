@@ -60,10 +60,14 @@
 #    So you have the model's NIV through the ATMNIV + vert skew, then you compare that to
 #       the NIV derived through the aggregate formula? and figure out the IEV that results in the minimum
 #       error across the matrix 
+#    Make sure you're getting needed stuff from TZero tab
+#       OVVSkew
+#       NormIV
 
 library(bizdays)
 library(GenSA)
 library(rootSolve)
+library(RQuantLib)
 
 # User inputs:
 uiMinIEV  = 0.011 # 1.1%
@@ -114,19 +118,23 @@ fIVNVMult = function(x) {
 }
 
 # Limit max vertical skew
+# TODO the max() and min() calls won't correctly operate on array
+# use pmin() and pmax() with different setup.
 fOVVSkew = function(K, U, divadj, t, maxSkew) {
   #ln(Strike Price / (underlying price+dividend adjustment)) / sqrt(YrsToExp),
   #but he tries to get the max between this skew and the *negative* user input skew
   #***seems like he either wants a skew value, maximum skew, or 0 depending.***
+  myMaxSkew = rep(maxSkew, length(K))
   if (t > 0) 
-    return (max(min(log(K / (U+divadj)) / (t^0.5), uiMaxSkew), -1*uiMaxSkew))
+    return (pmax(pmin(log(K / (U+divadj)) / (t^0.5), myMaxSkew), -1*myMaxSkew))
   else 
     return (0)
 }
 
 fNormIV = function(busDays, earnDays, normDays, IEV, calcIV) {
   # uses calculated IV which will end up calling NewtRaph / rootSolve function
-  return((max(busDays*calcIV^2-earnDays*IEV^2, 0) / normDays)^(0.5))
+  myZeroes= rep(0, length(busDays))
+  return((pmax(busDays*calcIV^2-earnDays*IEV^2, myZeroes) / normDays)^(0.5))
 }
 
 fcalcIV = function(K, U, divadj, t, avgIV, midPrice, optType) {

@@ -163,11 +163,6 @@ fvwErr = function(normIV, estNormIV, vega, ivNVMult) {
   return((normIV-estNormIV)*vega*ivNVMult)
 }
 
-# aggregate IV formula solving for non-earnings vol
-fnormIV = function(ND, calcIV, ED, iev, BD) {
-  return((ND*calcIV^2-ED*iev^2)/BD^(0.5))
-}
-
 # Set up calendar
 mycal = Calendar(holidays = uiHolidays, 
                  start.date = "2014-01-01", 
@@ -178,8 +173,26 @@ mycal = Calendar(holidays = uiHolidays,
 # Set up magic optimization problem. If you had a cool function, you'd just
 # call minimizeThis(fpriceErr(vweSQ))
 # but vweSQ is an array of squared vwErr: fvwErr()^2
-# but fvwErr() needs to call fnormIV() and fEstNIV()
+# but fvwErr() needs to call fNormIV() and fEstNIV()
 #   and fnormIV() has *as its input* the current iev, which is a value in the
 #     array being passed to the optimizer
 #   and fEstNIV() also has as its input some current values in the array
 #     being optimized
+# so do you end up doing this BS? do you call functions array wise or what?
+# is there an "R" way to do this? maybe read more optimization examples...
+# minimize(
+#  fpriceErr(
+#    vweSQ(
+#       vwErr(
+#         fNormIV(m$BD, 
+#                 m$ED, 
+#                 m$ND, 
+#                 IEV, 
+#                 fcalcIV(...)), 
+#         fEstNIV(...), 
+#         m$vega, 
+#         ivNVMult(...)
+#       )
+#     )
+#   )
+# )

@@ -129,14 +129,22 @@ fIVNVMult = function(x) {
 # TODO the max() and min() calls won't correctly operate on array
 # use pmin() and pmax() with different setup.
 fOVVSkew = function(K, U, divadj, t, maxSkew) {
+  # K and t are vectors
   #ln(Strike Price / (underlying price+dividend adjustment)) / sqrt(YrsToExp),
   #but he tries to get the max between this skew and the *negative* user input skew
   #***seems like he either wants a skew value, maximum skew, or 0 depending.***
   myMaxSkew = rep(maxSkew, length(K))
-  if (t > 0) 
-    return (pmax(pmin(log(K / (U+divadj)) / (t^0.5), myMaxSkew), -1*myMaxSkew))
-  else 
-    return (0)
+  # old way:
+  #if (t > 0) 
+  #  return (pmax(pmin(log(K / (U+divadj)) / (t^0.5), myMaxSkew), -1*myMaxSkew))
+  #else 
+  #  return (0)
+  # new way that properly uses vectors
+  myMaxSkew[t!=0] = pmax(pmin(log(K[t!=0] / (U+divadj)) / (t[t!=0]^0.5), 
+                              myMaxSkew), 
+                         -1*myMaxSkew)
+  myMaxSkew[t==0] = 0
+  return(myMaxSkew)
 }
 
 fNormIV = function(busDays, earnDays, normDays, IEV, calcIV) {
@@ -196,3 +204,4 @@ mycal = Calendar(holidays = uiHolidays,
 #     )
 #   )
 # )
+# Does it even work at all?

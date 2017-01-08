@@ -48,7 +48,7 @@ stock_file   = paste(ticker, '.asc', sep='')
 mydata       = read.csv(options_file)
 myivprice    = read.csv(stock_file)
 myivprice    = myivprice[!is.na(myivprice$IV30),] # no NA iv
-underly      = mydata[1]$Last
+underly      = mydata[1,]$Last
 mydata       = mydata[-1,]                        # top row is underlying
 
 # Set up only to use those strikes with bids/asks, look for Date

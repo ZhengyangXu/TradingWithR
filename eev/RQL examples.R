@@ -100,7 +100,7 @@ for (i in 1:length(matrixComplete$Strike.Price)) {
                                     dividend, 
                                     riskfr, 
                                     matrixComplete$ND[i]/252,
-                                    0.1)
+                                    mean(matrixComplete$Mid.IV[!is.na(matrixComplete$Mid.IV)]))
 }
 
 # try out one of them there functions
@@ -111,8 +111,8 @@ matrixComplete$OVVSkew = fOVVSkew(matrixComplete$Strike.Price,
                                   matrixComplete$ND/252,
                                   maxOVVSkew)
 
-# fake iev value to test function
-iev = 1.1892
+# iev value to test function (use real IEV from real example)
+iev = 1.1519
 matrixComplete$NormIV = fNormIV(matrixComplete$ND, 
                                 matrixComplete$ED, 
                                 matrixComplete$BD,

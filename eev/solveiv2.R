@@ -97,7 +97,7 @@ uiHolidays = c('2014-01-01', '2014-01-20', '2014-02-17',
 # function this time around? Is it just the output of the VWE Sq which then 
 # calls other functions? [yes]
 # Ac, Bc, Cc, Ap, Bp, Cp, VSA, VSB, VCA, VCB, IEV
-# [0] [1] [2] [3] [4] [5] [6]  [7]  [8]  [9]  [10]
+# [1] [2] [3] [4] [5] [6] [7]  [8]  [9]  [10]  [11]
 optLower = numeric(11) # TODO set defaults here
 optUpper = numeric(11) # TODO set defaults here
 toOpt    = numeric(11) # TODO randomize these between upper/lower defaults?
@@ -117,10 +117,10 @@ fEstNIV = function(slopeParm, ovvSkew, curveParm, atmniv) {
 
 # Make sure you're calling this with the correct put/call parameters!!
 fATMNIV = function(A, B, C, t) {
-  return(A*B*(1-exp(-C*t)))
+  return(A+B*(1-exp(-C*t)))
 }
 
-# Replicate that hard-coded multiplier
+# Replicate that hard-coded multiplier, where x = (non-ED / total biz days)
 fIVNVMult = function(x) {
   return(1.7628*(x^2)-1.7138*(x)+0.9066)
 }
@@ -134,12 +134,6 @@ fOVVSkew = function(K, U, divadj, t, maxSkew) {
   #but he tries to get the max between this skew and the *negative* user input skew
   #***seems like he either wants a skew value, maximum skew, or 0 depending.***
   myMaxSkew = rep(maxSkew, length(K))
-  # old way:
-  #if (t > 0) 
-  #  return (pmax(pmin(log(K / (U+divadj)) / (t^0.5), myMaxSkew), -1*myMaxSkew))
-  #else 
-  #  return (0)
-  # new way that properly uses vectors
   myMaxSkew[t!=0] = pmax(pmin(log(K[t!=0] / (U+divadj)) / (t[t!=0]^0.5), 
                               myMaxSkew), 
                          -1*myMaxSkew)
@@ -155,6 +149,7 @@ fNormIV = function(busDays, earnDays, normDays, IEV, calcIV) {
 
 fcalcIV = function(optType, midPrice, U, K, divadj, riskfr, t, avgIV) {
   # avgIV is average of all "Mid IV" from broker platform of whole matrix
+  #   and is used for the initial guess of the BSOPM root-finding stuff.
   # This should calculate the IV per BSOPM. Only doing this for short name.
   # TODO: check to see if user has specified EU options
   return (AmericanOptionImpliedVolatility(optType, midPrice, U, K, divadj, 
@@ -205,3 +200,57 @@ mycal = Calendar(holidays = uiHolidays,
 #   )
 # )
 # Does it even work at all?
+# Step by step:
+#   1. SETUP: Calculate IV with for loop
+#   2. SETUP: Calculate biz days / normal days 
+#   3. SETUP: Initial guess on IEV and slope parameters
+#   4. Calculate NIV from (BSOPM + days) info
+#   5. Calculate curves for the slopes and that way to estimate ATMNIV
+#   6. Calculate NIV using the #5 ATMNIV and OVVSkew 
+#      and IEV day-weighted equation
+#   7. Calculate the error between values in #4 and #6.
+#      (optimizer is minimizing this)
+# 
+
+# Some rough testing using some shared setup from <RQL examples.R>
+toOpt[11] = 1.1519
+matrixComplete$NormIV = fNormIV(matrixComplete$ND, 
+                                matrixComplete$ED, 
+                                matrixComplete$BD,
+                                iev,
+                                matrixComplete$CalcIV)
+
+toOpt[7:10] = c(-0.0661, -0.0415, 0.0777, -0.0018)
+matrixComplete$slope = fSlopeParm(toOpt[7], toOpt[8], matrixComplete$ND/252)
+matrixComplete$curve = fSlopeParm(toOpt[9], toOpt[10], matrixComplete$ND/252)
+
+toOpt[1:6] = c(0.2693, -3.0317, -0.0097, 0.2580, 0.0284, 2.8638)
+matrixComplete$atmniv[matrixComplete$type == "call"] = fATMNIV(toOpt[1], 
+                                                               toOpt[2], 
+                                                               toOpt[3], 
+                   matrixComplete$ND[matrixComplete$type == "call"]/252)
+
+matrixComplete$atmniv[matrixComplete$type == "put"] = fATMNIV(toOpt[1], 
+                                                              toOpt[5], 
+                                                              toOpt[6], 
+                   matrixComplete$ND[matrixComplete$type == "put"]/252)
+
+matrixComplete$estniv = fEstNIV(matrixComplete$slope, 
+                                matrixComplete$OVVSkew, 
+                                matrixComplete$curve,
+                                matrixComplete$atmniv)
+
+matrixComplete$nivErr = matrixComplete$NormIV - matrixComplete$estniv
+
+matrixComplete$nvivMult =  fIVNVMult(matrixComplete$BD / matrixComplete$ND)
+
+matrixComplete$vwErr = fvwErr(matrixComplete$NormIV,
+                              matrixComplete$estniv,
+                              matrixComplete$Vega,
+                              matrixComplete$nvivMult)
+
+# next part doesn't match spreadsheet, but maybe it's something in fvwErr()
+# no, see above, niv calcs aren't right due to bogus IEV test value
+matrixComplete$vwErr2 = matrixComplete$vwErr^2
+
+print(fpriceErr(matrixComplete$vwErr2))

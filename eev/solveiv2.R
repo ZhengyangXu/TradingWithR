@@ -217,7 +217,7 @@ toOpt[11] = 1.1519
 matrixComplete$NormIV = fNormIV(matrixComplete$ND, 
                                 matrixComplete$ED, 
                                 matrixComplete$BD,
-                                iev,
+                                toOpt[11],
                                 matrixComplete$CalcIV)
 
 toOpt[7:10] = c(-0.0661, -0.0415, 0.0777, -0.0018)
@@ -254,3 +254,4 @@ matrixComplete$vwErr = fvwErr(matrixComplete$NormIV,
 matrixComplete$vwErr2 = matrixComplete$vwErr^2
 
 print(fpriceErr(matrixComplete$vwErr2))
+

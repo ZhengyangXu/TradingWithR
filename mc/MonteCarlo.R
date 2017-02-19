@@ -39,11 +39,11 @@ if (wlr < 1) {
 #wlr    = avg_w / avg_l
 #profac = wlr * (pwin/(1-pwin))
 d_mult = 600            # d mode: dollars to multiply avg win/loss by
-maxpct = 5              # max % loss on the losing trades
+maxpct = 6              # max % loss on the losing trades
 f_mult = maxpct / avg_l # use this to sync wlr w/ max loss % on a trade
-ncurve = 50
-ntrade = 20
-d_or_f = 'd'            # dollars or fixed fractional risk mode
+ncurve = 5
+ntrade = 40
+d_or_f = 'f'            # dollars or fixed fractional risk mode
 equity = 25000
 
 probs  = runif(ncurve * ntrade)
@@ -104,5 +104,6 @@ for (i in 1:ncurve) {
 }
 
 lines(1:(ntrade+1), avg_crv, col="black", lwd=3)
-cat("average return ", (tail(avg_crv,1) - equity)/equity*100, "%")
-summary(as.vector(tail(curves, 1)))
+cat("average return ", (tail(avg_crv,1) - equity)/equity*100, "%\n")
+cat(" Min.   1Q   Median Mean  3Q    Max.\n",
+    summary(as.vector(tail(curves, 1))))

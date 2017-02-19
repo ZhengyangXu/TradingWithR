@@ -7,8 +7,8 @@
 #   whether wins/losses are in $ or %
 #   dollar multiplier of W:L if W:L in $ 
 #     (e.g. each trade wins $50 and loses $100 if W:L is 0.5 and mult is 100)
-#   percent multiplier of W:L if W:L in % 
-#     (e.g. each trade wins 5% and loses 10% if W:L is 0.5 and mult is 10)
+#   max loss per trade if W:L in % 
+#     (e.g. each trade wins 5% and loses 10% if W:L is 0.5 max loss is 10)
 #   starting equity
 # Risk of ruin inputs:
 #   Loss level % (be clear what this is: losing X% or having X% remaining)
@@ -39,10 +39,11 @@ if (wlr < 1) {
 #wlr    = avg_w / avg_l
 #profac = wlr * (pwin/(1-pwin))
 d_mult = 100
-f_risk = 10
-ncurve = 100
-ntrade = 100
-d_or_f = 'd'
+maxpct = 5
+f_mult = maxpct / avg_l # use this to sync wlr w/ max loss % on a trade
+ncurve = 50
+ntrade = 240
+d_or_f = 'f'
 equity = 10000
 
 probs  = runif(ncurve * ntrade)
@@ -53,21 +54,41 @@ if (d_or_f == "d") {
   trades[probs <= pwin] = avg_w * d_mult
   trades[probs > pwin]  = avg_l * d_mult * (-1)
 } else {
-  trades[probs <= pwin] = avg_w * f_risk # this is broken
-  trades[probs > pwin]  = avg_l * f_risk * (-1) # this is broken
+  trades[probs <= pwin] = f_mult * avg_w / 100
+  trades[probs > pwin]  = f_mult * avg_l / 100 * (-1)
 }
 
 curves = rep(equity, ncurve)
 temp   = rbind(curves, trades)
 #curves = rollapply(curves, 1, sum) # not this easy
 
+# rollapply is unusably slow as used below
+# brute force is easier than going to get RcppRoll and trying again
 excel_roll_sum = function(x) {
   y = x
   for (i in 1:length(x)) { y[i] = rollapply(x, i, sum)[1]}
   return(y)
 }
 
-curves  = apply(temp, 2, excel_roll_sum)
+excel_roll_sum2 = function(x) {
+  for (i in 1:(length(x)-1)) { 
+    x[i+1] = x[i]+x[i+1]
+  }
+  return(x)
+}
+
+excel_roll_mult = function(x) {
+  for (i in 1:(length(x)-1)) { 
+    x[i+1] = x[i]*(1+x[i+1])
+  }
+  return(x)
+}
+
+if (d_or_f == 'd') {
+  curves = apply(temp, 2, excel_roll_sum2)
+} else 
+  curves = apply(temp, 2, excel_roll_mult)
+
 avg_crv = rowSums(curves)/ncurve
 
 # plot them
@@ -83,3 +104,4 @@ for (i in 1:ncurve) {
 }
 
 lines(1:(ntrade+1), avg_crv, col="black", lwd=3)
+cat("average return ", (tail(avg_crv,1) - equity)/equity*100, "%")

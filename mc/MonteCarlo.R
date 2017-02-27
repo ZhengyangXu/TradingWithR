@@ -38,12 +38,12 @@ if (wlr < 1) {
 }
 #wlr    = avg_w / avg_l
 #profac = wlr * (pwin/(1-pwin))
-d_mult = 600            # d mode: dollars to multiply avg win/loss by
-maxpct = 6              # max % loss on the losing trades
+d_mult = 1000           # d mode: dollars to multiply avg win/loss by
+maxpct = 10             # max % loss on the losing trades
 f_mult = maxpct / avg_l # use this to sync wlr w/ max loss % on a trade
-ncurve = 5
-ntrade = 40
-d_or_f = 'f'            # dollars or fixed fractional risk mode
+ncurve = 50
+ntrade = 100
+d_or_f = 'd'            # dollars or fixed fractional risk mode
 equity = 25000
 
 probs  = runif(ncurve * ntrade)
@@ -104,6 +104,8 @@ for (i in 1:ncurve) {
 }
 
 lines(1:(ntrade+1), avg_crv, col="black", lwd=3)
-cat("average return ", (tail(avg_crv,1) - equity)/equity*100, "%\n")
+cat("average return of all curves ", (tail(avg_crv,1) - equity)/equity*100, "%\n")
+cat("expected value ", pwin*avg_w - (1-pwin)*avg_l, "\n")
+cat("kelly value", (wlr*pwin-(1-pwin))/wlr, "%\n")
 cat(" Min.   1Q   Median Mean  3Q    Max.\n",
     summary(as.vector(tail(curves, 1))))

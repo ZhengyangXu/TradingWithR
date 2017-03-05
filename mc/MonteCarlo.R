@@ -41,7 +41,7 @@ if (wlr < 1) {
 d_mult = 1000           # d mode: dollars to multiply avg win/loss by
 maxpct = 10             # max % loss on the losing trades
 f_mult = maxpct / avg_l # use this to sync wlr w/ max loss % on a trade
-ncurve = 100
+ncurve = 10
 ntrade = 100
 d_or_f = 'd'            # dollars or fixed fractional risk mode
 equity = 25000
@@ -99,7 +99,8 @@ plot(xrange, yrange, type="n", xlab="# trades", ylab="$ equity")
 colors   = rainbow(ncurve)
 
 for (i in 1:ncurve) {
-  lines(1:(ntrade+1), curves[,i], col=colors[i])
+  #lines(1:(ntrade+1), curves[,i], col=colors[i])
+  lines(1:(ntrade+1), curves[,i], col="grey")
 }
 
 lines(1:(ntrade+1), avg_crv, col="black", lwd=3)
@@ -115,26 +116,26 @@ cat(" Min.   1Q   Median Mean  3Q    Max.\n",
 #  first (if multiple) curves[,(curves[101,] == max(curves[101,]))][,1]
 #  otherwise: curves[,(curves[101,] == max(curves[101,]))]
 # plot best and worst curves
-if (is.null(ncol(curves[,(curves[101,] == min(curves[101,]))]))) {
+if (is.null(ncol(curves[,(curves[(ntrade+1),] == min(curves[(ntrade+1),]))]))) {
   lines(1:(ntrade+1), 
-        curves[,(curves[101,] == min(curves[101,]))], 
-        col="black", 
+        curves[,(curves[(ntrade+1),] == min(curves[(ntrade+1),]))], 
+        col="red", 
         lwd=2)
 } else {
   lines(1:(ntrade+1), 
-        curves[,(curves[101,] == min(curves[101,]))][,1], 
-        col="black", 
+        curves[,(curves[(ntrade+1),] == min(curves[(ntrade+1),]))][,1], 
+        col="red", 
         lwd=2)
 }
 
-if (is.null(ncol(curves[,(curves[101,] == max(curves[101,]))]))) {
+if (is.null(ncol(curves[,(curves[(ntrade+1),] == max(curves[(ntrade+1),]))]))) {
   lines(1:(ntrade+1), 
-        curves[,(curves[101,] == max(curves[101,]))], 
-        col="black", 
+        curves[,(curves[(ntrade+1),] == max(curves[(ntrade+1),]))], 
+        col="dark green", 
         lwd=2)
 } else {
   lines(1:(ntrade+1), 
-        curves[,(curves[101,] == max(curves[101,]))][,1], 
-        col="black", 
+        curves[,(curves[(ntrade+1),] == max(curves[(ntrade+1),]))][,1], 
+        col="dark green", 
         lwd=2)
 }

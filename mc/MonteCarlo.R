@@ -41,7 +41,7 @@ if (wlr < 1) {
 d_mult = 1000           # d mode: dollars to multiply avg win/loss by
 maxpct = 10             # max % loss on the losing trades
 f_mult = maxpct / avg_l # use this to sync wlr w/ max loss % on a trade
-ncurve = 50
+ncurve = 100
 ntrade = 100
 d_or_f = 'd'            # dollars or fixed fractional risk mode
 equity = 25000
@@ -97,7 +97,6 @@ yrange = range(curves)
 
 plot(xrange, yrange, type="n", xlab="# trades", ylab="$ equity")
 colors   = rainbow(ncurve)
-linetype = c(1:ncurve)
 
 for (i in 1:ncurve) {
   lines(1:(ntrade+1), curves[,i], col=colors[i])
@@ -109,3 +108,33 @@ cat("expected value ", pwin*avg_w - (1-pwin)*avg_l, "\n")
 cat("kelly value", (wlr*pwin-(1-pwin))/wlr, "%\n")
 cat(" Min.   1Q   Median Mean  3Q    Max.\n",
     summary(as.vector(tail(curves, 1))))
+
+# worst curve is:
+#  curves[,(curves[101,] == min(curves[101,]))]
+# best curve is:
+#  first (if multiple) curves[,(curves[101,] == max(curves[101,]))][,1]
+#  otherwise: curves[,(curves[101,] == max(curves[101,]))]
+# plot best and worst curves
+if (is.null(ncol(curves[,(curves[101,] == min(curves[101,]))]))) {
+  lines(1:(ntrade+1), 
+        curves[,(curves[101,] == min(curves[101,]))], 
+        col="black", 
+        lwd=2)
+} else {
+  lines(1:(ntrade+1), 
+        curves[,(curves[101,] == min(curves[101,]))][,1], 
+        col="black", 
+        lwd=2)
+}
+
+if (is.null(ncol(curves[,(curves[101,] == max(curves[101,]))]))) {
+  lines(1:(ntrade+1), 
+        curves[,(curves[101,] == max(curves[101,]))], 
+        col="black", 
+        lwd=2)
+} else {
+  lines(1:(ntrade+1), 
+        curves[,(curves[101,] == max(curves[101,]))][,1], 
+        col="black", 
+        lwd=2)
+}

@@ -56,14 +56,14 @@ for (i in 1:ncol(adjCl)) {
   if (i == 1) {
     x =         Delt(adjCl[,i], k=20, type='arithmetic')
     y =         Delt(adjCl[,i], k=60, type='arithmetic')
-    z = roll_sd(Delt(adjCl[,i], k=20, type='arithmetic'), 
+    z = roll_sd(Delt(adjCl[,i], k=1,  type='arithmetic'), # daily returns
                 20,
                 fill=0,
                 align='right') * (252)^0.5
   } else {
     x = cbind(x,         Delt(adjCl[,i], k=20, type='arithmetic'))
     y = cbind(y,         Delt(adjCl[,i], k=60, type='arithmetic'))
-    z = cbind(z, roll_sd(Delt(adjCl[,i], k=20, type='arithmetic'), 
+    z = cbind(z, roll_sd(Delt(adjCl[,i], k=1,  type='arithmetic'), # daily!
                          20,
                          fill=0,
                          align='right') * (252)^0.5

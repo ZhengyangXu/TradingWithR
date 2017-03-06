@@ -39,7 +39,8 @@ symbols = c("SPY", "IWM",
 # Get some dataz
 for (sym in symbols) {
   #getSymbols(sym, from="2002-01-01", to="2014-12-31") # need this data
-  getSymbols(sym, from="2007-02-01", to="2016-12-31")
+  #getSymbols(sym, from="2007-02-01", to="2016-12-31")
+  getSymbols(sym, from="2016-01-01", to="2017-03-01")
   if (sym == symbols[1]) {
     adjCl = get(sym)[,6]
   } else {
@@ -50,17 +51,19 @@ for (sym in symbols) {
 # Compute the metrics (do it for all time, who cares?)
 for (i in 1:ncol(adjCl)) {
   if (i == 1) {
-    x = Delt(adjCl[,i], k=20, type='arithmetic')
-    y = Delt(adjCl[,i], k=60, type='arithmetic')
+    x =         Delt(adjCl[,i], k=20, type='arithmetic')
+    y =         Delt(adjCl[,i], k=60, type='arithmetic')
     z = roll_sd(Delt(adjCl[,i], k=20, type='arithmetic'), 
                 20,
-                fill=0) * (252)^0.5
+                fill=0,
+                align='right') * (252)^0.5
   } else {
     x = cbind(x,         Delt(adjCl[,i], k=20, type='arithmetic'))
     y = cbind(y,         Delt(adjCl[,i], k=60, type='arithmetic'))
     z = cbind(z, roll_sd(Delt(adjCl[,i], k=20, type='arithmetic'), 
                          20,
-                         fill=0) * (252)^0.5
+                         fill=0,
+                         align='right') * (252)^0.5
                  )
   }
 }
@@ -104,3 +107,15 @@ pickThree = function(foo) {
 # example output for the start of December 2016
 pickThree(getRanks(first(adjCl["2016-12"], '1 day'), 0.3, 0.4, 0.3))
 
+for (y in 2016:2017) {
+  for (m in 1:12) {
+    if (y == 2017 && m > 2) {
+      break
+    } else {
+      print(c(paste(y, m, sep='-'), pickThree(getRanks(first(adjCl[paste(y, m, sep='-')], '1 day'), 0.3, 0.4, 0.3))))
+      # get the monthly returns for each symbol, store them in 1 of 3 columns
+      # then you get to just add up the columns for total return since you're
+      # using log returns. you _are_ using log returns, right?
+    }
+  }
+}

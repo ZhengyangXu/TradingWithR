@@ -17,6 +17,11 @@
 # penalize the instruments that are having large variations in their 
 # daily returns. Those that are quiet and consistent are favored.
 
+# !!!NB!!! Author's spreadsheet uses k=19 not 20 for 20 day return
+#          and doesn't use the adjusted close price
+#          and uses k=65 days for 3 month performance
+#          and uses stdevp not stdev
+
 library("quantmod")
 library("RcppRoll") # no xts/zoo support?
 
@@ -37,7 +42,7 @@ library("RcppRoll") # no xts/zoo support?
 #            "ICF", "RWX") # RWX starts 2006-12-19
 
 symbols = c("SPY", "EFA", "IEF", "GLD", "ICF", "DBC")
-adjust_for_dividends = 4 # 6 is adjusted close, 4 is close
+adjust_for_dividends = 6 # 6 is adjusted close, 4 is close
 
 # Get some dataz
 for (sym in symbols) {
@@ -55,14 +60,14 @@ for (sym in symbols) {
 for (i in 1:ncol(adjCl)) {
   if (i == 1) {
     x =         Delt(adjCl[,i], k=20, type='arithmetic')
-    y =         Delt(adjCl[,i], k=60, type='arithmetic')
+    y =         Delt(adjCl[,i], k=63, type='arithmetic')
     z = roll_sd(Delt(adjCl[,i], k=1,  type='arithmetic'), # daily returns
-                20,
+                20,                                       # lookback is 20
                 fill=0,
                 align='right') * (252)^0.5
   } else {
     x = cbind(x,         Delt(adjCl[,i], k=20, type='arithmetic'))
-    y = cbind(y,         Delt(adjCl[,i], k=60, type='arithmetic'))
+    y = cbind(y,         Delt(adjCl[,i], k=63, type='arithmetic'))
     z = cbind(z, roll_sd(Delt(adjCl[,i], k=1,  type='arithmetic'), # daily!
                          20,
                          fill=0,
@@ -75,12 +80,12 @@ adjCl = cbind(adjCl, x, y, z)
 
 colnames(adjCl) = c(symbols,
                     paste(symbols, "20 day"),
-                    paste(symbols, "60 day"),
+                    paste(symbols, "63 day"),
                     paste(symbols, "20 vol"))
 
 # adjCl is now 1:10 prices, 11:20 20 day, 21:30 60 day, 31:40 20 vol
 # so Pth symbol out of N symbols' 20 day return is N+P
-# so Pth symbol out of N symbols' 60 day return is 2*N+P
+# so Pth symbol out of N symbols' 63 day return is 2*N+P
 # so Pth symbol out of N symbols' 20 day vol is 3*N+P
 
 # for ranking, make a new data structure with dates of adjCl

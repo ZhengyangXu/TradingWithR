@@ -100,3 +100,7 @@ pickThree = function(foo) {
                     # ties don't matter; you want 1 1 2 if possible
                     # if you chop 1 2 3 (3) no big deal
 }
+
+# example output for the start of December 2016
+pickThree(getRanks(first(adjCl["2016-12"], '1 day'), 0.3, 0.4, 0.3))
+

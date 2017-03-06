@@ -55,14 +55,14 @@ for (sym in symbols) {
 for (i in 1:ncol(adjCl)) {
   if (i == 1) {
     x =         Delt(adjCl[,i], k=20, type='arithmetic')
-    y =         Delt(adjCl[,i], k=60, type='arithmetic')
+    y =         Delt(adjCl[,i], k=90, type='arithmetic')
     z = roll_sd(Delt(adjCl[,i], k=20, type='arithmetic'), 
                 20,
                 fill=0,
                 align='right') * (252)^0.5
   } else {
     x = cbind(x,         Delt(adjCl[,i], k=20, type='arithmetic'))
-    y = cbind(y,         Delt(adjCl[,i], k=60, type='arithmetic'))
+    y = cbind(y,         Delt(adjCl[,i], k=90, type='arithmetic'))
     z = cbind(z, roll_sd(Delt(adjCl[,i], k=20, type='arithmetic'), 
                          20,
                          fill=0,
@@ -75,12 +75,12 @@ adjCl = cbind(adjCl, x, y, z)
 
 colnames(adjCl) = c(symbols,
                     paste(symbols, "20 day"),
-                    paste(symbols, "60 day"),
+                    paste(symbols, "90 day"),
                     paste(symbols, "20 vol"))
 
-# adjCl is now 1:10 prices, 11:20 20 day, 21:30 60 day, 31:40 20 vol
+# adjCl is now 1:10 prices, 11:20 20 day, 21:30 90 day, 31:40 20 vol
 # so Pth symbol out of N symbols' 20 day return is N+P
-# so Pth symbol out of N symbols' 60 day return is 2*N+P
+# so Pth symbol out of N symbols' 90 day return is 2*N+P
 # so Pth symbol out of N symbols' 20 day vol is 3*N+P
 
 # for ranking, make a new data structure with dates of adjCl

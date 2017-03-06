@@ -30,21 +30,24 @@ library("RcppRoll") # no xts/zoo support?
 #        the two evenly? i think so. maybe add option of rebalancing every mo?
 # 4. How to deal with dividends? Are they taken care of in back-data?
 
-symbols = c("SPY", "IWM", 
-            "EFA", "EEM", # EEM starts 2003-04-14
-            "TLT", "TLH", # TLT starts 2002-07-30, TLH 2007-01-11
-            "DBC", "GLD", # DBC starts 2006-02-06, GLD 2004-11-18
-            "ICF", "RWX") # RWX starts 2006-12-19
+#symbols = c("SPY", "IWM", 
+#            "EFA", "EEM", # EEM starts 2003-04-14
+#            "TLT", "TLH", # TLT starts 2002-07-30, TLH 2007-01-11
+#            "DBC", "GLD", # DBC starts 2006-02-06, GLD 2004-11-18
+#            "ICF", "RWX") # RWX starts 2006-12-19
+
+symbols = c("SPY", "EFA", "IEF", "GLD", "ICF", "DBC")
+adjust_for_dividends = 4 # 6 is adjusted close, 4 is close
 
 # Get some dataz
 for (sym in symbols) {
   #getSymbols(sym, from="2002-01-01", to="2014-12-31") # need this data
   #getSymbols(sym, from="2007-02-01", to="2016-12-31")
-  getSymbols(sym, from="2016-01-01", to="2017-03-01")
+  #getSymbols(sym, from="2016-01-01", to="2017-03-01")
   if (sym == symbols[1]) {
-    adjCl = get(sym)[,6]
+    adjCl = get(sym)[,adjust_for_dividends]
   } else {
-    adjCl = cbind(adjCl, get(sym)[,6])
+    adjCl = cbind(adjCl, get(sym)[,adjust_for_dividends]) 
   }
 }
 
@@ -105,14 +108,14 @@ pickThree = function(foo) {
 }
 
 # example output for the start of December 2016
-pickThree(getRanks(first(adjCl["2016-12"], '1 day'), 0.3, 0.4, 0.3))
+pickThree(getRanks(first(adjCl["2016-8"], '1 day'), 0.3, 0.4, 0.3))
 
 for (y in 2016:2017) {
   for (m in 1:12) {
     if (y == 2017 && m > 2) {
       break
     } else {
-      print(c(paste(y, m, sep='-'), pickThree(getRanks(first(adjCl[paste(y, m, sep='-')], '1 day'), 0.3, 0.4, 0.3))))
+      print(c(paste(y, m, sep='-'), pickThree(getRanks(last(adjCl[paste(y, m, sep='-')], '1 day'), 0.3, 0.4, 0.3))))
       # get the monthly returns for each symbol, store them in 1 of 3 columns
       # then you get to just add up the columns for total return since you're
       # using log returns. you _are_ using log returns, right?

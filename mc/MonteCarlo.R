@@ -41,7 +41,7 @@ if (wlr < 1) {
 d_mult = 1000           # d mode: dollars to multiply avg win/loss by
 maxpct = 10             # max % loss on the losing trades
 f_mult = maxpct / avg_l # use this to sync wlr w/ max loss % on a trade
-ncurve = 10
+ncurve = 1000
 ntrade = 100
 d_or_f = 'd'            # dollars or fixed fractional risk mode
 equity = 25000
@@ -139,3 +139,8 @@ if (is.null(ncol(curves[,(curves[(ntrade+1),] == max(curves[(ntrade+1),]))]))) {
         col="dark green", 
         lwd=2)
 }
+# maybe do the above in a for loop to see how best and worst curves at 
+# trade (25%, 50%, 75%) ended up? use an array for colors like
+# [magenta", "orange"   "blue", "yellow     "pink", "lime"      "green, "red"]
+#  best/worst at 25%    best/worst at 50%   best/worst at 75%     end
+# maybe even don't even graph the grey ones?

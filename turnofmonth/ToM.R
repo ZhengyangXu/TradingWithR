@@ -9,12 +9,12 @@
 # - which stocks work best? which are worst?
 # - do pairs trading like Friesen suggested
 # - mid-month effect?
-
+library("PerformanceAnalytics")
 Sys.setenv(TZ="UTC")
 final_g = NULL
 final_p = NULL
-begin_year = 1999
-end_year = 2014
+begin_year = 2013
+end_year = 2016
 symbol = "SPY"
 return_type = "log" # 'log' or 'arithmetic'
 
@@ -24,7 +24,7 @@ symbol = gsub("[][^]", "", symbol)
 for (y in begin_year:end_year) {
   for (i in 1:12) {
     if (i == 12) {
-      if (y == 2014) break;
+      if (y == 2016) break;
       tmp_g = rbind(last(get(symbol)[paste(y, i, sep="-")],"5 days"),
                   first(get(symbol)[paste((y+1), 1, sep="-")],"3 days"))
       tmp_g_delt = Delt(Ad(tmp_g),k=(nrow(tmp_g)-1),type=return_type)[nrow(tmp_g)]
@@ -91,5 +91,5 @@ summary = cbind(table.Stats(final_g), table.Stats(bandh), table.Stats(final_p))
 colnames(summary) = c("T-3 to T+3", "Buy & Hold", "T+4 to T-4")
 
 # Other fun graphs
-# charts.PerformanceSummary(bandh)
-# charts.PerformanceSummary(final_g)
+ charts.PerformanceSummary(bandh)
+ charts.PerformanceSummary(final_g)

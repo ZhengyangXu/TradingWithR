@@ -43,12 +43,14 @@ library("RcppRoll") # no xts/zoo support?
 
 symbols = c("SPY", "EFA", "IEF", "GLD", "ICF", "DBC")
 adjust_for_dividends = 6 # 6 is adjusted close, 4 is close
+initBal = 30000
+nFunds  = 3
 
 # Get some dataz
 for (sym in symbols) {
   #getSymbols(sym, from="2002-01-01", to="2014-12-31") # need this data
   #getSymbols(sym, from="2007-02-01", to="2016-12-31")
-  #getSymbols(sym, from="2016-01-01", to="2017-03-01")
+  #getSymbols(sym, from="2015-01-01", to="2017-03-01")
   if (sym == symbols[1]) {
     adjCl = get(sym)[,adjust_for_dividends]
   } else {
@@ -113,7 +115,68 @@ pickThree = function(foo) {
 }
 
 # example output for the start of December 2016
-pickThree(getRanks(first(adjCl["2016-8"], '1 day'), 0.3, 0.4, 0.3))
+pickThree(getRanks(last(adjCl["2016-7"], '1 day'), 0.3, 0.4, 0.3))
+
+
+
+
+
+# matrix of daily returns
+returns     = apply(adjCl[,1:6], 2, Delt, type='arithmetic')
+returns     = xts(returns, order.by=index(adjCl))
+returns[1,] = 0 # cause Delt() made row 1 == NA
+
+# initialize balances object. contains running balances by fund.
+# for final equity curve, just rowSums()
+balances = xts(
+            matrix(rep(0, length(symbols)*nrow(adjCl)), 
+                   nrow=nrow(adjCl), 
+                   ncol=length(symbols)), 
+            order.by=index(adjCl)
+           )
+colnames(balances) = symbols
+
+# get first recommendations (y will contain what to invest in for 2016-01)
+y = pickThree(getRanks(last(adjCl["2015-12"], '1 day'), 0.3, 0.4, 0.3))
+# set initial balances for funds (only 3 future funds will use this)
+balances[index(last(balances["2015-12"], '1 day')),] = (initBal/nFunds)
+# if you are switching funds and you have only 1 fund you're swapping
+# your new fund's balance is you old fund's balance
+# else if you are switching funds and you have 2 funds you're swapping
+# your new two funds balances are (old fund 1 + old fund 2) / 2
+#        how to handle this and still be able to rowSums()?
+#        and what about the return on those days? 
+#              find which are the new funds and switch balances?
+
+# first, put returns into balances, then do cumprod()
+for (i in 1:length(y)) {
+  balances["2016-1",which(symbols == y[i])] = 1+returns["2016-1",which(symbols == y[i])]
+}
+# get the actual balances for the month
+balances["2016-1",] = cumprod(rbind(last(balances["2015-12"], '1 day'), balances["2016-1"]))["2016-1",]
+# now you have the returns for 2016-1, and you repeat the loop since you 
+# can reference the previous returns. but now that you're repeating the loop
+# you have to do error checking / see if you're already invested in something
+
+x = pickThree(getRanks(last(adjCl["2016-1"], '1 day'), 0.3, 0.4, 0.3))
+a = x[(x %in% y) == TRUE]  # funds in y (and x) that will stay invested
+b = y[(y %in% x) == FALSE] # funds in y that will swap out
+c = x[(x %in% y) == FALSE] # funds in x that will be new
+# if a == 3, do nothing
+# else if a == 2 (i.e. one fund swaps) 
+#   new fund last day performance == last day old fund performance
+#   old fund last day performance = 0
+# else if a == 1 (i.e. two funds swap)
+#   temp sum = last day old fund 1 + last day old fund 2
+#   new fund 1 = temp / 2
+#   new fund 2 = temp / 2
+#   old funds last day performance = 0
+
+
+
+
+
+
 
 for (y in 2016:2017) {
   for (m in 1:12) {
@@ -121,9 +184,6 @@ for (y in 2016:2017) {
       break
     } else {
       print(c(paste(y, m, sep='-'), pickThree(getRanks(last(adjCl[paste(y, m, sep='-')], '1 day'), 0.3, 0.4, 0.3))))
-      # get the monthly returns for each symbol, store them in 1 of 3 columns
-      # then you get to just add up the columns for total return since you're
-      # using log returns. you _are_ using log returns, right?
     }
   }
 }

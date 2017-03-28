@@ -23,7 +23,8 @@
 #   Risk of ever experiencing loss level % from any given point on curve
 #   Risk of ever experiencing loss level % of starting capital
 
-library(zoo)
+library('zoo')
+library('xts')
 
 pwin   = 0.9
 wlr    = 0.4
@@ -38,13 +39,13 @@ if (wlr < 1) {
 }
 #wlr    = avg_w / avg_l
 #profac = wlr * (pwin/(1-pwin))
-d_mult = 1000           # d mode: dollars to multiply avg win/loss by
-maxpct = 10             # max % loss on the losing trades
+d_mult = 3600           # d mode: dollars won per trade. loss = d_mult / wlr
+maxpct = 4              # f mode: max % loss on the losing trades
 f_mult = maxpct / avg_l # use this to sync wlr w/ max loss % on a trade
-ncurve = 1000
-ntrade = 100
+ncurve = 10000
+ntrade = 30
 d_or_f = 'd'            # dollars or fixed fractional risk mode
-equity = 25000
+equity = 125000
 
 probs  = runif(ncurve * ntrade)
 probs  = matrix(probs, nrow=ntrade, ncol=ncurve)
@@ -95,7 +96,8 @@ avg_crv = rowSums(curves)/ncurve
 xrange = c(0, ntrade)
 yrange = range(curves)
 
-plot(xrange, yrange, type="n", xlab="# trades", ylab="$ equity")
+plot(xrange, yrange, type="n", xlab="# trades", ylab="$ equity", 
+     main=paste("pwin: ", pwin, " wlr: ", wlr, " n: ", ncurve))
 colors   = rainbow(ncurve)
 
 for (i in 1:ncurve) {
@@ -107,8 +109,8 @@ lines(1:(ntrade+1), avg_crv, col="black", lwd=3)
 cat("average return of all curves ", (tail(avg_crv,1) - equity)/equity*100, "%\n")
 cat("expected value ", pwin*avg_w - (1-pwin)*avg_l, "\n")
 cat("kelly value", (wlr*pwin-(1-pwin))/wlr, "%\n")
-cat(" Min.   1Q   Median Mean  3Q    Max.\n",
-    summary(as.vector(tail(curves, 1))))
+print(paste(" Min.   1Q   Median Mean  3Q    Max."))
+print(summary(as.vector(tail(curves, 1))))
 
 # worst curve is:
 #  curves[,(curves[101,] == min(curves[101,]))]
@@ -144,3 +146,61 @@ if (is.null(ncol(curves[,(curves[(ntrade+1),] == max(curves[(ntrade+1),]))]))) {
 # [magenta", "orange"   "blue", "yellow     "pink", "lime"      "green, "red"]
 #  best/worst at 25%    best/worst at 50%   best/worst at 75%     end
 # maybe even don't even graph the grey ones?
+
+# curves with final equity < start equity:
+sux = matrix(curves[,curves[ntrade,] < equity], nrow=ntrade+1)
+print(paste("number of curves losing money over", ntrade, "trades out of",
+            ncurve, "curves:", ncol(sux)), sep=" ")
+print(paste(ncol(sux)/ncurve*100, "% of curves lost money", sep=" "))
+
+# OISUF is ~ 300 profit / 600  loss per contract on RUT and SPX
+#          ~ 600 profit / 1200 loss per contract on NDX
+# Taking a signal within a day or two of each other all on the same
+#   expiration: $2400 at risk per contract (3 instruments)
+# Taking a signal within a day or two of each other all on the same
+#   expiration with 2x RUT/SPX size: $3600 at risk per event
+# pct of account   2%      4%     6% 
+# size  of (1)     120k    60k    40k !! Run sim 2.4k/40k/10k/18 look at DD !!
+# size  of (2)     180k    90k    60k
+
+# Every time you're putting that $X at risk, you're expecting ($X * 0.65)
+#   so even betting on 3 at once with 1 contract, you're expecting to make $
+#   the hard part is consecutive losses. but even these odds with 6% losses
+#   the average still weighs heavily in your favor. only ~1% lose money over
+#   20 trades. 0% lose money over 40 trades.
+
+# So on the optimistic side, how many times were there 3 trades on in same
+#   expiration month?
+# And on the pessimist side, how many times were there 6 or 9 trades on
+#   in total? What would a massive slippage event looked like in that regard?
+#   or worse, a flash crash triggering limits then recovery?
+
+# Timelines: if you average 0.75 trades/month/instrument, that's only 27/year
+#   on plan (1) that's 9*2400*0.65 = $14k profit
+#   on plan (2) that's 9*3600*0.65 = $21k profit
+# Note: you have to do 9*dollars cause that's what's different potentially.
+#   you don't have the potential to trade 27 times risking 2400/ea, you are
+#   trading 9 times risking 2400 or 3600 each.
+
+# How many curves have a 25% drawdown from start equity?
+# How many curves have a 25% drawdown ever?
+elementOr = function(x) { 
+  if (length(x) == 1) return(x) 
+  else return(x[1] | elementOr(x[2:length(x)]))
+}
+
+# curves with % dd from equity:
+pctdd    = 25
+valdd    = (1-(pctdd/100))*equity
+ddcurves = length(apply(curves < valdd, 2, elementOr)[apply(curves < valdd, 2, elementOr) == TRUE])
+print(paste(ddcurves, "of", ncurve, "curves (", ddcurves/ncurve*100, "%) fell below", pctdd, "% starting equity"))
+
+# use maxDrawdown() to find if drawdown was worse than X%
+xcurves = xts(curves, order.by=(Sys.Date()-nrow(curves)+(1:nrow(curves))))
+# myDDs   = apply(xcurves, 2, maxDrawdown) # gotta pass it Delt() before you can 
+                                           # use maxDrawdown and re-make xts
+
+
+
+
+

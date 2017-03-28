@@ -21,9 +21,20 @@
 #          and doesn't use the adjusted close price
 #          and uses k=65 days for 3 month performance
 #          and uses stdevp not stdev
+#          ETFreplay itself says 6mo is 126 trading days and 3mo is 63
+
+#  TODO   ETFreplay does a tiebreak based on:
+#         In the event of a tie, where two or more ETFs have the same 
+#         weighted rank, then the factor that has been assigned the 
+#         largest weighting determines the order.
+
+
+# !!!NB!!! TODO this code does not yet factor dividends correctly
+#          and I don't think adjusted data from Yahoo is good enough?
 
 library("quantmod")
 library("RcppRoll") # no xts/zoo support?
+library("PerformanceAnalytics")
 
 # 1. Be able to read data from either yahoo/disk
 # 2. Write function to take in the latest data and spit out scores
@@ -35,16 +46,16 @@ library("RcppRoll") # no xts/zoo support?
 #        the two evenly? i think so. maybe add option of rebalancing every mo?
 # 4. How to deal with dividends? Are they taken care of in back-data?
 
-#symbols = c("SPY", "IWM", 
-#            "EFA", "EEM", # EEM starts 2003-04-14
-#            "TLT", "TLH", # TLT starts 2002-07-30, TLH 2007-01-11
-#            "DBC", "GLD", # DBC starts 2006-02-06, GLD 2004-11-18
-#            "ICF", "RWX") # RWX starts 2006-12-19
+symbols = c("SPY", "IWM", # 4 div/yr.
+            "EFA", "EEM", # 2 div/yr.  EEM starts 2003-04-14
+            "TLT", "TLH", # 12 div/yr. TLT starts 2002-07-30, TLH 2007-01-11
+            "DBC", "GLD", # 0 div/yr.  DBC starts 2006-02-06, GLD 2004-11-18
+            "ICF", "RWX") # 4 div/yr.  RWX starts 2006-12-19
 
-symbols = c("SPY", "EFA", "IEF", "GLD", "ICF")
-adjust_for_dividends = 4 # 6 is adjusted close, 4 is close
+#symbols = c("SPY", "EFA", "IEF", "GLD", "ICF")
+adjust_for_dividends = 6 # 6 is adjusted close, 4 is close
 initBal   = 60000
-nFunds    = 3
+nFunds    = 3 # can't change to 2 yet with this code
 data.start.year = 2007
 data.start.mon  = 1
 data.end.year   = 2017
@@ -104,15 +115,16 @@ colnames(adjCl) = c(symbols,
 
 getRanks = function(foo, A, B, C) {
   n  = length(foo) / 4 # how many symbols?
-  r1 = rank(as.numeric(-foo[,(1+n):(2*n)]), ties.method='first')   # HIGHEST must be first
-  r2 = rank(as.numeric(-foo[,(1+2*n):(3*n)]), ties.method='first') # HIGHEST must be first
-  r3 = rank(as.numeric(foo[,(1+3*n):(4*n)]), ties.method='first')  # LOWEST must be first
+  r1 = rank(as.numeric(-foo[,(1+n):(2*n)]), ties.method='first')   # HIGHEST must be 1 (first place)
+  r2 = rank(as.numeric(-foo[,(1+2*n):(3*n)]), ties.method='first') # HIGHEST must be 1
+  r3 = rank(as.numeric(foo[,(1+3*n):(4*n)]), ties.method='first')  # LOWEST must be 1
   r4 = rbind(r1, r2, r3)
   return (colSums(r4*c(A, B, C)))
 }
 
 # takes in vector of ranks with length equal to # symbols
-# output: bottom 3 ranking (that is, best) performing symbols to choose
+# output: lowest 3 ranking (that is, best) performing symbols to choose
+# (think of rank 1 as first place)
 pickThree = function(foo) {
   bar = sort(foo)[1:3]
   if (length(symbols[foo == bar[1]]) == 2)
@@ -173,8 +185,10 @@ colnames(balances) = symbols
 # build the list of picks
 # l$"2016-1" is what to invest in at the end of the month for 2016-2
 l = list()
+r = list()
 tmp = paste(analysis.start.year, 12, sep='-')
 l[[tmp]] = pickThree(getRanks(last(adjCl[paste(tmp)], '1 day'), 0.3, 0.4, 0.3))
+r[[tmp]] = getRanks(last(adjCl[paste(tmp)], '1 day'), 0.3, 0.4, 0.3)
 for (y in (analysis.start.year+1):(data.end.year-1)) {
   for (m in 1:12) {
     if (y == 2017 && m > 2) {
@@ -182,6 +196,7 @@ for (y in (analysis.start.year+1):(data.end.year-1)) {
     } else {
         tmp = paste(y, m, sep='-')
         l[[tmp]] = pickThree(getRanks(last(adjCl[tmp], '1 day'), 0.3, 0.4, 0.3))
+        r[[tmp]] = getRanks(last(adjCl[tmp], '1 day'), 0.3, 0.4, 0.3)
     }
   }
 }
@@ -251,10 +266,16 @@ equity = cbind(balances,rowSums(balances))[,length(symbols)+1][paste(analysis.st
 bench  = cumprod(
           rbind(initBal * first(1+returns$SPY[paste(analysis.start.year+1),], '1 day'), 
                 first(1+returns$SPY[paste(analysis.start.year+1, 2017, sep="::"),], '-1 day')))
-##plot(last(bench, '-1 day'))
-##lines(last(equity["2017"], '-1 day'), col='red')
-plot(last(equity, '-1 day'))
+#plot(last(bench, '-1 day'), ylim=range(equity, bench))
+#lines(last(equity, '-1 day'), col='red')
+plot(last(equity, '-1 day'), ylim=range(equity, bench), 
+     main="Rotation v. Benchmark")
 lines(last(bench, '-1 day'), col='red')
+legend('topleft', 
+       legend=c("rotate", "bench"), 
+       col=c('black', 'red'),
+       lty=1,
+       lwd=2)
 
 # redo everything with log returns so you can use PerformanceSummary
 # graphs in quantmod?
@@ -262,6 +283,47 @@ print(Delt(to.yearly(equity)[,4]))
 # something very wrong with backtest code
 # returns don't match LT's at all some years
 # TODO: confirm a test on 1 year of returns by hand in excel
+
+# get some stuff going reading from CSVs instead of Yahooooooo-oo-oooo!
+setwd("~/Documents/TradingWithR/rotation")
+spyb = read.csv("data/SPY.CSV", header=TRUE)
+#as.Date(spyb[,1], format="%m/%d/%y")
+zabba = xts(spyb[,2:5], as.Date(spyb[,1], format="%m/%d/%y"))
+# no no no use getSymbols with src="csv"!
+# But wait....
+# "If you want to use getSymbols.csv, 
+# your data has must have the Date and 6 columns (OHLCVA)"
+
+# How would you verify a data set?
+#   any prices < 10% of starting price (does daily diffs check this?)
+#   any prices > 300% of starting price (does daily diffs check this?)
+#   any NAs
+#   any 1 day returns -5% < x > 5% (know these facts per symbol?)
+#   max string of positive / negative days > X (known per symbol?)
+#   any non-numbers
+#   how to check for systemic over/under valuation? compare two data sets
+#     and see if the sum of the positive diffs > X 
+#     and sum of negative diffs < Y?
+
+# graph the optionvue data vs the yahoo data
+##for (sym in c("SPY", "IWM", "EFA")) {
+##  for (y in 2010:2016) {
+##    spyb = read.csv(paste("data/", sym, ".CSV", sep=""), header=TRUE)
+##    zabba = xts(spyb[,2:5], as.Date(spyb[,1], format="%m/%d/%y"))
+##    charts.PerformanceSummary(Delt(zabba$CLOSE[paste(y)]), 
+##                              main=paste(sym,"-OV-",y))
+##    charts.PerformanceSummary(Delt(Cl(get(sym)[paste(y)])), 
+##                              main=paste(sym,"-Y-",y))
+##  }
+##}
+# suspects from graphs with more than a few differences
+#   ICF 2015
+#   TLH 2015
+#   TLH 2014
+#   TLH 2010
+#   IWM 2016
+
+
 
 
 

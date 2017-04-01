@@ -25,6 +25,7 @@
 
 library('zoo')
 library('xts')
+library('PerformanceAnalytics')
 
 pwin   = 0.9
 wlr    = 0.4
@@ -42,8 +43,8 @@ if (wlr < 1) {
 d_mult = 3600           # d mode: dollars won per trade. loss = d_mult / wlr
 maxpct = 4              # f mode: max % loss on the losing trades
 f_mult = maxpct / avg_l # use this to sync wlr w/ max loss % on a trade
-ncurve = 10000
-ntrade = 30
+ncurve = 5000
+ntrade = 90
 d_or_f = 'd'            # dollars or fixed fractional risk mode
 equity = 125000
 
@@ -97,7 +98,7 @@ xrange = c(0, ntrade)
 yrange = range(curves)
 
 plot(xrange, yrange, type="n", xlab="# trades", ylab="$ equity", 
-     main=paste("pwin: ", pwin, " wlr: ", wlr, " n: ", ncurve))
+     main=paste("pwin: ", pwin, " wlr: ", wlr, " curves: ", ncurve))
 colors   = rainbow(ncurve)
 
 for (i in 1:ncurve) {
@@ -196,11 +197,29 @@ ddcurves = length(apply(curves < valdd, 2, elementOr)[apply(curves < valdd, 2, e
 print(paste(ddcurves, "of", ncurve, "curves (", ddcurves/ncurve*100, "%) fell below", pctdd, "% starting equity"))
 
 # use maxDrawdown() to find if drawdown was worse than X%
-xcurves = xts(curves, order.by=(Sys.Date()-nrow(curves)+(1:nrow(curves))))
-# myDDs   = apply(xcurves, 2, maxDrawdown) # gotta pass it Delt() before you can 
-                                           # use maxDrawdown and re-make xts
+xcurves  = xts(curves, order.by=(Sys.Date()-nrow(curves)+(1:nrow(curves))))
+curveret = apply(xcurves, 2, Delt) # gotta pass it Delt() before you can 
+                                   # use maxDrawdown and re-make xts
+xcurveret = xts(curveret, order.by=(Sys.Date()-nrow(curves)+(1:nrow(curves))))
+myDDs     = apply(xcurveret, 2, maxDrawdown)
+ddanytime = length(myDDs[myDDs > 0.15])
+print(paste(ddanytime, "of", ncurve, "curves (", ddanytime/ncurve*100, 
+            "%) experienced", pctdd, "% drawdown (ever)"))
+print(paste("Worst drawdown (in blue): ", 
+            signif(max(myDDs)*100, 3),
+            "%"))
 
-
+worstcurve = seq(1:ncurve)[myDDs == max(myDDs)]
+lines(1:(ntrade+1), 
+      curves[,worstcurve], 
+      col="blue", 
+      lwd=2)
+print("Drawdown summary:")
+print(paste(" Min.   1Q   Median Mean  3Q    Max."))
+print(summary(myDDs))
+# for calculation of risk of DD, use the idea of running out of money, just
+# make the starting amount of money equal to the % of bankroll you're looking
+# for DD statistics on. so 25% dd on 100k is losing all of 25k
 
 
 

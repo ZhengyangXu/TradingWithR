@@ -339,9 +339,6 @@ legend('topleft',
 # redo everything with log returns so you can use PerformanceSummary
 # graphs in quantmod?
 print(Delt(to.yearly(equity)[,4]))
-# something very wrong with backtest code
-# returns don't match LT's at all some years
-# TODO: confirm a test on 1 year of returns by hand in excel
 
 # get some stuff going reading from CSVs instead of Yahooooooo-oo-oooo!
 setwd("~/Documents/TradingWithR/rotation")

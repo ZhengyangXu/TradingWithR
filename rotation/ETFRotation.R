@@ -140,29 +140,33 @@ getRanks = function(foo, A, B, C) {
   # [A, B, B, B, ...] return A (max weight B) (second max weight B)
   # [A, B, C, C, ...] return A B (max weight C)
   
-  if (length(symbols[result == bar[1]]) == 2) # [A, A, B, C] or [A, A, B, B]
-    if (length(symbols[result == bar[3]]) == 2) # TODO [A, B, C, C, C, ...]
-      baz = c(symbols[result == bar[1]],
-              symbols[min(r2[symbols[result == bar[3]][1] == symbols], 
-                          r2[symbols[result == bar[3]][2] == symbols]) == r2])
+  if (length(symbols[e.a.e(result, bar[1])]) == 2) { # [A, A, B, C] or [A, A, B, B]
+    if (length(symbols[e.a.e(result, bar[3])]) == 2) # TODO [A, B, C, C, C, ...]
+      baz = c(symbols[e.a.e(result, bar[1])],
+              symbols[e.a.e(
+                        min(r2[symbols[e.a.e(result, bar[3])][1] == symbols], 
+                            r2[symbols[e.a.e(result, bar[3])][2] == symbols]), 
+                        r2)])
               # tie break on only matching symbols
     else
-      baz = c(symbols[result == bar[1]], # returns 2 symbols
-            symbols[result == bar[3]])
-  # this case doesn't consider sort(foo) == [A, A, B, B, ...]
-  else if (length(symbols[result == bar[1]]) == 3)
-    baz = symbols[result == bar[1]]
-    # this doesn't solve case of [A, A, A, A, ...]
-  else
-    if (length(symbols[result == bar[3]]) == 2)  # TODO [A, B, C, C, C, ...]
-      baz = c(symbols[result == bar[1]],
-              symbols[result == bar[2]],
-              symbols[min(r2[symbols[result == bar[3]][1] == symbols], 
-                          r2[symbols[result == bar[3]][2] == symbols]) == r2])
+      baz = c(symbols[e.a.e(result, bar[1])], # returns 2 symbols
+            symbols[e.a.e(result, bar[3])])
+  } else if (length(symbols[e.a.e(result, bar[1])]) == 3) {
+       # this case doesn't consider sort(foo) == [A, A, B, B, ...]
+       baz = symbols[e.a.e(result, bar[1])]
+  } else {
+    if (length(symbols[e.a.e(result, bar[3])]) == 2)  # TODO [A, B, C, C, C, ...]
+      baz = c(symbols[e.a.e(result, bar[1])],
+              symbols[e.a.e(result, bar[2])],
+              symbols[e.a.e(
+                min(r2[symbols[e.a.e(result, bar[3])][1] == symbols], 
+                    r2[symbols[e.a.e(result, bar[3])][2] == symbols]), 
+                r2)])
     else
-      baz = c(symbols[result == bar[1]], 
-              symbols[result == bar[2]], 
-              symbols[result == bar[3]])
+      baz = c(symbols[e.a.e(result, bar[1])], 
+              symbols[e.a.e(result, bar[2])], 
+              symbols[e.a.e(result, bar[3])])
+  }
   return (baz[1:3])
 }
 

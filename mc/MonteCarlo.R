@@ -29,6 +29,7 @@ library('PerformanceAnalytics')
 
 pwin   = 0.9
 wlr    = 0.4
+pctdd  = 25
 #avg_w  = 2
 #avg_l  = 5
 if (wlr < 1) {
@@ -191,7 +192,6 @@ elementOr = function(x) {
 }
 
 # curves with % dd from equity:
-pctdd    = 25
 valdd    = (1-(pctdd/100))*equity
 ddcurves = length(apply(curves < valdd, 2, elementOr)[apply(curves < valdd, 2, elementOr) == TRUE])
 print(paste(ddcurves, "of", ncurve, "curves (", ddcurves/ncurve*100, "%) fell below", pctdd, "% starting equity"))

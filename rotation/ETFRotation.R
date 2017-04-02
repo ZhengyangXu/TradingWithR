@@ -35,6 +35,7 @@
 library("quantmod")
 library("RcppRoll") # no xts/zoo support?
 library("PerformanceAnalytics")
+e.a.e <- Vectorize(function(x, y) {isTRUE(all.equal(x, y))})
 
 # 1. Be able to read data from either yahoo/disk
 # 2. Write function to take in the latest data and spit out scores
@@ -53,7 +54,7 @@ symbols = c("SPY", "IWM", # 4 div/yr.
             "ICF", "RWX") # 4 div/yr.  RWX starts 2006-12-19
 
 #symbols = c("SPY", "EFA", "IEF", "GLD", "ICF")
-adjust_for_dividends = 6 # 6 is adjusted close, 4 is close
+adjust_for_dividends = 6 # 6 is adjusted close, 4 is close. 6 matches ETFreplay
 initBal   = 60000
 nFunds    = 3 # can't change to 2 yet with this code
 data.start.year = 2007
@@ -113,31 +114,79 @@ colnames(adjCl) = c(symbols,
 # for ranking, make a new data structure with dates of adjCl
 # then 'apply' a function row-wise to the adjCl object to get the output.
 
+# inputs
+#   foo = data from adjCl for last day of month
+#   A = weight of 20 day returns
+#   B = weight of 63 day returns
+#   C = weight of 20 day volatility
 getRanks = function(foo, A, B, C) {
   n  = length(foo) / 4 # how many symbols?
-  r1 = rank(as.numeric(-foo[,(1+n):(2*n)]), ties.method='first')   # HIGHEST must be 1 (first place)
-  r2 = rank(as.numeric(-foo[,(1+2*n):(3*n)]), ties.method='first') # HIGHEST must be 1
-  r3 = rank(as.numeric(foo[,(1+3*n):(4*n)]), ties.method='first')  # LOWEST must be 1
+  # HIGHEST must be 1 (first place) so note the negative foo (-foo[...])
+  r1 = rank(as.numeric(-foo[,(1+n):(2*n)]), ties.method='first')   
+  # HIGHEST must be 1 (first place) so note the negative foo (-foo[...])
+  r2 = rank(as.numeric(-foo[,(1+2*n):(3*n)]), ties.method='first')
+  # LOWEST must be 1
+  r3 = rank(as.numeric(foo[,(1+3*n):(4*n)]), ties.method='first')  
   r4 = rbind(r1, r2, r3)
-  return (colSums(r4*c(A, B, C)))
+  result = colSums(r4*c(A, B, C))
+  
+  bar = sort(result)[1:4]
+  # [A, B, C, D, ...] return A B C
+  # [A, A, B, C, ...] return A A B
+  # [A, A, B, B, ...] return A A (max weight B)
+  # [A, A, A, B, ...] return A A A
+  # [A, A, A, A, ...] return (max weight A) first 3 not (max weight A)
+  # [A, B, B, C, ...] return A B B
+  # [A, B, B, B, ...] return A (max weight B) (second max weight B)
+  # [A, B, C, C, ...] return A B (max weight C)
+  
+  if (length(symbols[result == bar[1]]) == 2) # [A, A, B, C] or [A, A, B, B]
+    if (length(symbols[result == bar[3]]) == 2) # TODO [A, B, C, C, C, ...]
+      baz = c(symbols[result == bar[1]],
+              symbols[min(r2[symbols[result == bar[3]][1] == symbols], 
+                          r2[symbols[result == bar[3]][2] == symbols]) == r2])
+              # tie break on only matching symbols
+    else
+      baz = c(symbols[result == bar[1]], # returns 2 symbols
+            symbols[result == bar[3]])
+  # this case doesn't consider sort(foo) == [A, A, B, B, ...]
+  else if (length(symbols[result == bar[1]]) == 3)
+    baz = symbols[result == bar[1]]
+    # this doesn't solve case of [A, A, A, A, ...]
+  else
+    if (length(symbols[result == bar[3]]) == 2)  # TODO [A, B, C, C, C, ...]
+      baz = c(symbols[result == bar[1]],
+              symbols[result == bar[2]],
+              symbols[min(r2[symbols[result == bar[3]][1] == symbols], 
+                          r2[symbols[result == bar[3]][2] == symbols]) == r2])
+    else
+      baz = c(symbols[result == bar[1]], 
+              symbols[result == bar[2]], 
+              symbols[result == bar[3]])
+  return (baz[1:3])
 }
 
 # takes in vector of ranks with length equal to # symbols
 # output: lowest 3 ranking (that is, best) performing symbols to choose
 # (think of rank 1 as first place)
-pickThree = function(foo) {
-  bar = sort(foo)[1:3]
-  if (length(symbols[foo == bar[1]]) == 2)
-    baz = c(symbols[foo == bar[1]], 
-            symbols[foo == bar[3]])
-  else if (length(symbols[foo == bar[1]]) == 3)
-    baz = symbols[foo == bar[1]]
-  else
-    baz = c(symbols[foo == bar[1]], 
-            symbols[foo == bar[2]], 
-            symbols[foo == bar[3]])
-  return (baz[1:3])
-}
+# To truly match ETFreplay, need: In the event of a tie, where two or more 
+#   ETFs have the same weighted rank, then the factor that has been assigned 
+#   the largest weighting determines the order.
+# --- DEPRECATED --- use getRanks instead now
+#pickThree = function(foo) {
+#  bar = sort(foo)[1:3]
+#  if (length(symbols[foo == bar[1]]) == 2)
+#    baz = c(symbols[foo == bar[1]], # returns 2 symbols
+#            symbols[foo == bar[3]])
+#    # this case doesn't consider sort(foo) == [A, A, B, B, ...]
+#  else if (length(symbols[foo == bar[1]]) == 3)
+#    baz = symbols[foo == bar[1]]
+#  else
+#    baz = c(symbols[foo == bar[1]], 
+#            symbols[foo == bar[2]], 
+#            symbols[foo == bar[3]])
+#  return (baz[1:3])
+#}
 
 # example output for the start of December 2016
 #pickThree(getRanks(last(adjCl["2016-7"], '1 day'), 0.3, 0.4, 0.3))
@@ -168,10 +217,12 @@ colnames(balances) = symbols
 ###balances[index(last(balances["2015-12"], '1 day')),] = (initBal/nFunds)
 #### first, put returns into balances, then do cumprod()
 ###for (i in 1:length(y)) {
-###  balances["2016-1",which(symbols == y[i])] = 1+returns["2016-1",which(symbols == y[i])]
+###  balances["2016-1",which(symbols == y[i])] = 
+###                    1+returns["2016-1", which(symbols == y[i])]
 ###}
 #### get the actual balances for the month
-###balances["2016-1",] = cumprod(rbind(last(balances["2015-12"], '1 day'), balances["2016-1"]))["2016-1",]
+###balances["2016-1",] = cumprod(rbind(last(balances["2015-12"], '1 day'), 
+###                              balances["2016-1"]))["2016-1",]
 
 # now you have the returns for 2016-1, and you repeat the loop since you 
 # can reference the previous returns. but now that you're repeating the loop
@@ -187,23 +238,24 @@ colnames(balances) = symbols
 l = list()
 r = list()
 tmp = paste(analysis.start.year, 12, sep='-')
-l[[tmp]] = pickThree(getRanks(last(adjCl[paste(tmp)], '1 day'), 0.3, 0.4, 0.3))
-r[[tmp]] = getRanks(last(adjCl[paste(tmp)], '1 day'), 0.3, 0.4, 0.3)
+l[[tmp]] = getRanks(last(adjCl[paste(tmp)], '1 day'), 0.3, 0.4, 0.3)
+#r[[tmp]] = getRanks(last(adjCl[paste(tmp)], '1 day'), 0.3, 0.4, 0.3)
 for (y in (analysis.start.year+1):(data.end.year-1)) {
   for (m in 1:12) {
-    if (y == 2017 && m > 2) {
+    if (y == 2017 && m > 3) {
       break
     } else {
         tmp = paste(y, m, sep='-')
-        l[[tmp]] = pickThree(getRanks(last(adjCl[tmp], '1 day'), 0.3, 0.4, 0.3))
-        r[[tmp]] = getRanks(last(adjCl[tmp], '1 day'), 0.3, 0.4, 0.3)
+        l[[tmp]] = getRanks(last(adjCl[tmp], '1 day'), 0.3, 0.4, 0.3)
+        #r[[tmp]] = getRanks(last(adjCl[tmp], '1 day'), 0.3, 0.4, 0.3)
     }
   }
 }
 old = names(l)[1]
 new = names(l)[2]
 for (sym in l[[old]]) {
-  balances[index(last(balances[paste(old)], '1 day')),which(symbols == sym)] = (initBal/nFunds)
+  balances[index(last(balances[paste(old)], '1 day')),which(symbols == sym)] = 
+    (initBal/nFunds)
 }
 
 for (i in 2:length(l)) {
@@ -214,11 +266,14 @@ for (i in 2:length(l)) {
     balances[paste(new),which(symbols == sym)] = 
       1+returns[paste(new),which(symbols == sym)]
   
-  balances[paste(new),] = cumprod(rbind(last(balances[paste(old)], '1 day'), balances[paste(new)]))[paste(new),]
-
-  a = l[[old]][(l[[old]] %in% l[[new]]) == TRUE]  # funds in old (and new) that will stay invested
-  b = l[[old]][(l[[old]] %in% l[[new]]) == FALSE] # funds in old that will swap out
-  c = l[[new]][(l[[new]] %in% l[[old]]) == FALSE] # funds in new that will be new
+  balances[paste(new),] = cumprod(rbind(last(balances[paste(old)], '1 day'), 
+                                        balances[paste(new)]))[paste(new),]
+  # funds in old (and new) that will stay invested
+  a = l[[old]][(l[[old]] %in% l[[new]]) == TRUE]  
+  # funds in old that will swap out
+  b = l[[old]][(l[[old]] %in% l[[new]]) == FALSE] 
+  # funds in new that will be new
+  c = l[[new]][(l[[new]] %in% l[[old]]) == FALSE] 
   ############### should all the 'news' below be 'olds' if prework is done?
   ############### and not include 2015 in list?
   # crux is that you made your decisions for january returns on 12/31

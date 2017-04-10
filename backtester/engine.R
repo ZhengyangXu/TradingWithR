@@ -46,6 +46,7 @@
 #           - second entry is the stats of that symbol (and by nature of the
 #             data structure, that account) at that time. open expirations
 #             must be taken into account in this data frame
+#           - third entry is account summary statistics
 #  -or-
 #
 #   - R Global
@@ -160,8 +161,89 @@ EnrichOptionsQuotes = function(my.df) {
   return(cbind(my.df, my.iso.date, my.exp.date, biz.dte, cal.dte, mid.price))
 }
 
+# FindCondor: find the strikes of iron condor legs by delta: short 11 long 8
+# inputs:
+#   my.df, a data frame consisting of a Delta column and Existing.Posn. column
+# outputs:
+#   a data frame consisting of only the trades to take to establish the condor
+#   if there is more than one available expiration, take the min for now
+#   TODO: proper multi-expiration handling
+FindCondor = function(my.df) {
+  my.df = subset(my.df, cal.dte > 49 & cal.dte < 76)
+  my.df = subset(my.df, cal.dte == min(cal.dte))
+  my.df[PickByDelta(my.df$Delta,   8),]$Existing.Posn. =  1
+  my.df[PickByDelta(my.df$Delta,  11),]$Existing.Posn. = -1
+  my.df[PickByDelta(my.df$Delta,  -8),]$Existing.Posn. =  1
+  my.df[PickByDelta(my.df$Delta, -11),]$Existing.Posn. = -1
+  open.trades = my.df[!is.na(my.df$Existing.Posn.),]
+}
+
 # works fine
 my.df = EnrichOptionsQuotes(OptionQuotesCsv("RUT", 20170306, 1600))
+# clean up to only include possible candidates
+my.df = subset(my.df, cal.dte > 49 & cal.dte < 76)
+# check to see if you have two expirations
+if (min(my.df$cal.dte) == max(my.df$cal.dte)) {
+  # you have one expiration selected
+  # figure out how to check if current positions in this expiration
+  
+} else {
+  # figure out how to check if current positions in this expiration
+}
+
+# example of getting strikes / other data points:
+my.df[PickByDelta(my.df$Delta,   8),]$Strike.Price
+
+my.df[PickByDelta(my.df$Delta,   8),]$Existing.Posn. =  1
+my.df[PickByDelta(my.df$Delta,  11),]$Existing.Posn. = -1
+my.df[PickByDelta(my.df$Delta,  -8),]$Existing.Posn. =  1
+my.df[PickByDelta(my.df$Delta, -11),]$Existing.Posn. = -1
+open.trades = my.df[!is.na(my.df$Existing.Posn.),]
+net.credit = sum(open.trades$Existing.Posn. * open.trades$mid.price)
+# net (credit of) -3.45
+
+# when time increments a day, you have to carry your position forward
+# open.trades has an extra column for orig.price
+# open.trades has a column for the quoted symbol
+# when you make trades, fill in the open.trades for tomorrow with symbols
+# and position sizes
+
+# this is a simple example that breaks on weekends, but just using it
+# to test the idea of a list of lists for the data structure
+my.data = rep(list(list()), length(20170306:20170310))
+names(my.data) = 20170306:20170310
+for (i in 20170306:20170310) {
+  my.data[[as.character(i)]][[1]] = EnrichOptionsQuotes(
+                                      OptionQuotesCsv("RUT", i, 1600)
+                                    )
+}
+
+# Steps to making a trade:
+#   1. Copy trades to tomorrow's [[2]]
+#   2. In tomorrow's [[2]], insert a new column orig.price with value
+#      equal to mid.price (the actual opening trade value)
+#   3. In tomorrow's [[2]], set mid.price equal to tomorrow's [[1]] mid.price
+#      (the actual value of the position tomorrow)
+
+# 1
+my.data[['20170307']][[2]] = FindCondor(my.data[['20170306']][[1]])
+# 2
+my.data[['20170307']][[2]]$orig.price = my.data[['20170307']][[2]]$mid.price
+# 3
+my.data[['20170307']][[2]]$mid.price = 
+  my.data[['20170307']][[1]][
+    my.data[['20170307']][[1]]$Symbol %in% 
+      my.data[['20170307']][[2]]$Symbol,
+    ]$mid.price
+
+open.trades = my.data[['20170307']][[2]]
+floating.profit = (open.trades$mid.price - open.trades$orig.price) * 
+  open.trades$Existing.Posn.
+
+
+
+
+
 
 
 

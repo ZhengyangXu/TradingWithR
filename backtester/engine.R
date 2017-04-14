@@ -101,6 +101,7 @@ my.cal = create.calendar(holidays = my.holidays,
                          end.date=cal.end, 
                          weekdays=c("saturday", "sunday"),
                          name="my.cal")
+setwd("~/Documents/TradingWithR/backtester/data")
 
 # PickByDelta: return an index of x that has the closest value to y. if there
 #              is a tie, return the first one you come to. This function
@@ -164,43 +165,40 @@ EnrichOptionsQuotes = function(my.df) {
 # FindCondor: find the strikes of iron condor legs by delta: short 11 long 8
 # inputs:
 #   my.df, a data frame consisting of a Delta column and Existing.Posn. column
+#   is.list, a boolean of whether or not the input is actually a list
 # outputs:
 #   a data frame consisting of only the trades to take to establish the condor
 #   if there is more than one available expiration, take the min for now
 #   TODO: proper multi-expiration handling
-FindCondor = function(my.df) {
+# example:
+#   call FindCondor with lapply: foo = lapply(my.data, FindCondor, TRUE)
+#   call FindCondor with normal data frame: foo = FindCondor(my.df)
+FindCondor = function(my.df, is.list = FALSE) {
+  if (is.list) {
+    my.df = my.df[[1]]
+  }
+  # clean up to only include traditional monthlies
+  # (should be checking this in data export as well)
+  my.df = my.df[!grepl("D\\d{1,2}$", my.df$Symbol, perl = TRUE),]
+  # clean up to only include possible candidates
   my.df = subset(my.df, cal.dte > 49 & cal.dte < 76)
+  # if you have two expirations, pick the minimum for now
   my.df = subset(my.df, cal.dte == min(cal.dte))
   my.df[PickByDelta(my.df$Delta,   8),]$Existing.Posn. =  1
   my.df[PickByDelta(my.df$Delta,  11),]$Existing.Posn. = -1
   my.df[PickByDelta(my.df$Delta,  -8),]$Existing.Posn. =  1
   my.df[PickByDelta(my.df$Delta, -11),]$Existing.Posn. = -1
+  # Existing.Posn is NA by default, so this works but is not intuitive:
   open.trades = my.df[!is.na(my.df$Existing.Posn.),]
 }
 
-# works fine
-my.df = EnrichOptionsQuotes(OptionQuotesCsv("RUT", 20170306, 1600))
-# clean up to only include possible candidates
-my.df = subset(my.df, cal.dte > 49 & cal.dte < 76)
-# check to see if you have two expirations
-if (min(my.df$cal.dte) == max(my.df$cal.dte)) {
-  # you have one expiration selected
-  # figure out how to check if current positions in this expiration
-  
-} else {
-  # figure out how to check if current positions in this expiration
-}
-
+# small example, works fine
+#my.df = EnrichOptionsQuotes(OptionQuotesCsv("RUT", 20170306, 1600))
 # example of getting strikes / other data points:
-my.df[PickByDelta(my.df$Delta,   8),]$Strike.Price
-
-my.df[PickByDelta(my.df$Delta,   8),]$Existing.Posn. =  1
-my.df[PickByDelta(my.df$Delta,  11),]$Existing.Posn. = -1
-my.df[PickByDelta(my.df$Delta,  -8),]$Existing.Posn. =  1
-my.df[PickByDelta(my.df$Delta, -11),]$Existing.Posn. = -1
-open.trades = my.df[!is.na(my.df$Existing.Posn.),]
-net.credit = sum(open.trades$Existing.Posn. * open.trades$mid.price)
-# net (credit of) -3.45
+#my.df[PickByDelta(my.df$Delta,   8),]$Strike.Price
+# find net credit for a trade
+#open.trades = my.df[!is.na(my.df$Existing.Posn.),]
+#net.credit = sum(open.trades$Existing.Posn. * open.trades$mid.price)
 
 # when time increments a day, you have to carry your position forward
 # open.trades has an extra column for orig.price
@@ -229,18 +227,27 @@ for (i in 20170306:20170310) {
 my.data[['20170307']][[2]] = FindCondor(my.data[['20170306']][[1]])
 # 2
 my.data[['20170307']][[2]]$orig.price = my.data[['20170307']][[2]]$mid.price
-# 3
+# 3, using cool %in% operator
 my.data[['20170307']][[2]]$mid.price = 
   my.data[['20170307']][[1]][
     my.data[['20170307']][[1]]$Symbol %in% 
       my.data[['20170307']][[2]]$Symbol,
     ]$mid.price
 
+# find floating profit
 open.trades = my.data[['20170307']][[2]]
 floating.profit = (open.trades$mid.price - open.trades$orig.price) * 
   open.trades$Existing.Posn.
+floating.profit = 100*sum(floating.profit)
 
-
+# Other trade keeping method:
+#   1.  If there's an open trade, copy the current day's quote into the open 
+#       positions object
+#   2.  Final profit is max(dates open).mid.price - min(dates open).mid.price
+#   3.  Can graph each position's P/L in the end, and all positions floating
+#       is just the running sum of balance + open positions P/L
+#   4.  Need to add the final P/L to total equity somehow otherwise you never
+#       book profit.
 
 
 

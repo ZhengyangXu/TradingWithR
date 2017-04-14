@@ -2,13 +2,13 @@
 # v0.1 requirements:
 #    0. DONE be able to read in quotes from OptionVue
 #       also, use quantmod to read the chains in from Yahoo finance
-#    1. be able to tell the expiration months apart and keep track of DTE
+#    1. DONE be able to tell the expiration months apart and keep track of DTE
 #       a. what data structure to use here? read one matrix from disk at a 
 #          time or store all data in an array or list of data frames?
 #          put everything in one data frame with expirations caught in 
 #          the symbol names? I think this is how it normally works.
 #           i. Probably starting with a list of data frames
-#    2. be able to choose options based on delta in the quotes
+#    2. DONE be able to choose options based on delta in the quotes
 #    3. be able to track open P/L and closed P/L
 #    4. be able to exit a trade on delta in the quotes, P/L, DTE
 #    5. be able to print the greeks of the total position every time interval
@@ -215,6 +215,7 @@ for (i in 20170306:20170310) {
                                       OptionQuotesCsv("RUT", i, 1600)
                                     )
 }
+names(my.data) = as.Date(names(my.data), "%Y%m%d")
 
 # Steps to making a trade:
 #   1. Copy trades to tomorrow's [[2]]
@@ -224,18 +225,18 @@ for (i in 20170306:20170310) {
 #      (the actual value of the position tomorrow)
 
 # 1
-my.data[['20170307']][[2]] = FindCondor(my.data[['20170306']][[1]])
+my.data[['2017-03-07']][[2]] = FindCondor(my.data[['2017-03-06']][[1]])
 # 2
-my.data[['20170307']][[2]]$orig.price = my.data[['20170307']][[2]]$mid.price
+my.data[['2017-03-07']][[2]]$orig.price = my.data[['2017-03-07']][[2]]$mid.price
 # 3, using cool %in% operator
-my.data[['20170307']][[2]]$mid.price = 
-  my.data[['20170307']][[1]][
-    my.data[['20170307']][[1]]$Symbol %in% 
-      my.data[['20170307']][[2]]$Symbol,
+my.data[['2017-03-07']][[2]]$mid.price = 
+  my.data[['2017-03-07']][[1]][
+    my.data[['2017-03-07']][[1]]$Symbol %in% 
+      my.data[['2017-03-07']][[2]]$Symbol,
     ]$mid.price
 
 # find floating profit
-open.trades = my.data[['20170307']][[2]]
+open.trades = my.data[['2017-03-07']][[2]]
 floating.profit = (open.trades$mid.price - open.trades$orig.price) * 
   open.trades$Existing.Posn.
 floating.profit = 100*sum(floating.profit)
@@ -248,6 +249,30 @@ floating.profit = 100*sum(floating.profit)
 #       is just the running sum of balance + open positions P/L
 #   4.  Need to add the final P/L to total equity somehow otherwise you never
 #       book profit.
+
+
+# Every day:
+#   1.  Look at today's open trades
+#   2.  Decide if we should exit them
+#   3a. If no exit, copy them to tomorrow's trades
+#   3b. If exit, don't copy them to tomorrow. record P/L somehow.
+#   4.  Decide if we should make a new trade
+#   5.  If we trade, copy the trade to tomorrow
+#   6.  Copy portfolio stats to today's portfolio stat object
+
+
+# Create a stats object for every day, then rbind them all together later
+# after you've completed the backtest to graph $ and stuff
+stats = c("Delta", "Gamma",      "Theta",    "Vega",     "Rho", 
+                   "Closed P/L", "Open P/L", "Days P/L", "Reg-T Req")
+portfolio.stats           = rep(0, 9)
+dim(portfolio.stats)      = c(1, 9)
+rownames(portfolio.stats) = as.character(Sys.Date())
+colnames(portfolio.stats) = stats
+
+
+
+
 
 
 

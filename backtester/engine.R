@@ -232,14 +232,30 @@ my.data[['2017-03-07']][[2]]$orig.price = my.data[['2017-03-07']][[2]]$mid.price
 my.data[['2017-03-07']][[2]]$mid.price = 
   my.data[['2017-03-07']][[1]][
     my.data[['2017-03-07']][[1]]$Symbol %in% 
-      my.data[['2017-03-07']][[2]]$Symbol,
-    ]$mid.price
+    my.data[['2017-03-07']][[2]]$Symbol,
+  ]$mid.price
 
-# find floating profit
-open.trades = my.data[['2017-03-07']][[2]]
-floating.profit = (open.trades$mid.price - open.trades$orig.price) * 
-  open.trades$Existing.Posn.
-floating.profit = 100*sum(floating.profit)
+# find floating profit given df of open trades w/ column orig.price
+FloatingProfit = function(trades) {
+  floating.profit = (trades$mid.price - trades$orig.price) * 
+    trades$Existing.Posn.
+  floating.profit = 100*sum(floating.profit)
+}
+
+# find initial credit given df of open trades w/ column orig.price
+InitialCredit = function(trades) {
+  net.credit = sum(trades$Existing.Posn. * trades$mid.price)
+}
+
+# return the strike price of the short call in a single condor
+ShortCall = function(trades) {
+  strike = max(subset(trades, Existing.Posn. < 0)$Strike)
+}
+
+# return the strike price of the short put in a single condor
+ShortPut = function(trades) {
+  strike = min(subset(trades, Existing.Posn. < 0)$Strike)
+}
 
 # Other trade keeping method:
 #   1.  If there's an open trade, copy the current day's quote into the open 
@@ -252,26 +268,68 @@ floating.profit = 100*sum(floating.profit)
 
 
 # Every day:
-#   1.  Look at today's open trades
+#   1.  Update current trade prices to today's quotes
 #   2.  Decide if we should exit them
-#   3a. If no exit, copy them to tomorrow's trades
-#   3b. If exit, don't copy them to tomorrow. record P/L somehow.
+#   3a. If no exit, do nothing
+#   3b. If exit, delete the open position. record P/L somehow
 #   4.  Decide if we should make a new trade
-#   5.  If we trade, copy the trade to tomorrow
-#   6.  Copy portfolio stats to today's portfolio stat object
+#   5.  If we trade, add to today's trade list
+#   6.  Copy all open trades to tomorrow
+#   6.  Log portfolio stats to today's portfolio stat object
 
 
 # Create a stats object for every day, then rbind them all together later
 # after you've completed the backtest to graph $ and stuff
 stats = c("Delta", "Gamma",      "Theta",    "Vega",     "Rho", 
                    "Closed P/L", "Open P/L", "Days P/L", "Reg-T Req")
-portfolio.stats           = rep(0, 9)
+# this needs to copy the my.data object for dates
+portfolio.stats           = rep(0, 9) 
 dim(portfolio.stats)      = c(1, 9)
 rownames(portfolio.stats) = as.character(Sys.Date())
 colnames(portfolio.stats) = stats
 
-
-
+# main backtest loop for now
+for (i in 1:length(my.data)) {
+  # steps 1 through 3b
+  for (j in 2:length(my.data[[i]])) {
+    # update today's trades with today's quotes
+    my.data[[i]][[j]]$mid.price = 
+      my.data[[i]][[1]][
+        my.data[[i]][[1]]$Symbol %in% 
+          my.data[[i]][[j]]$Symbol,
+        ]$mid.price
+    # create indicies of today's trades to exit
+    to.exit = rep(0, length(my.data[[j]]))
+    # exit if 90% profit, 200% loss, 5 days till exp, short strike touch
+    if (FloatingProfit(my.data[[i]][[j]]) >= 0.89 * 
+        InitialCredit(my.data[[i]][[j]])) {
+      to.exit[j] = TRUE
+    } else if (FloatingProfit(my.data[[i]][[j]]) <= -2 * 
+               InitialCredit(my.data[[i]][[j]])) {
+      to.exit[j] = TRUE
+    } else if (my.data[[i]][[j]][1]$biz.dte <= 5) {
+      to.exit[j] = TRUE
+    } else if (Hi(underlying[i]) >= ShortCall(my.data[[i]][[j]])) {
+      to.exit[j] = TRUE
+    } else if (Lo(underlying[i]) <= ShortPut(my.data[[i]][[j]])) {
+      to.exit[j] = TRUE
+    }
+  } # to.exit is now something like c(TRUE, TRUE, TRUE, FALSE, FALSE)
+  # record open P/L as closed P/L for today for those indicies, cumsum later
+  if (length(to.exit[to.exit == TRUE]) > 0) {
+    portfolio.stats[[i]][6] = sum(lapply, my.data[[i]][-1], FloatingProfit)
+  }
+  # set those indicies to NULL
+  my.data[[i]][to.exit] = NULL
+  
+  # Step 4. Decide if we should make a new trade
+  # in 1 TPS backtest, easy, you create new trade every day
+  my.data[[i]][[length(my.data[[i]]) + 1]] = FindCondor(my.data[[i]][1])
+  my.data[[i]][[length(my.data[[i]]) + 1]]$orig.price = 
+    my.data[[i]][[length(my.data[[i]]) + 1]]$mid.price
+  
+  
+}
 
 
 

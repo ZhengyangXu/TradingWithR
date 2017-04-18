@@ -102,6 +102,7 @@ my.cal = create.calendar(holidays = my.holidays,
                          weekdays=c("saturday", "sunday"),
                          name="my.cal")
 setwd("~/Documents/TradingWithR/backtester/data")
+getSymbols("^RUT", from="2017-01-01")
 
 # PickByDelta: return an index of x that has the closest value to y. if there
 #              is a tie, return the first one you come to. This function
@@ -257,6 +258,21 @@ ShortPut = function(trades) {
   strike = min(subset(trades, Existing.Posn. < 0)$Strike)
 }
 
+# see if exit conditions are met for a given condor, xts of underlying, date
+ShouldExit = function(my.df, underlying, date) {
+  if (FloatingProfit(my.df) >= 0.89 * (-1 * InitialCredit(my.df))) 
+    return(TRUE)
+  else if (FloatingProfit(my.df) <= -2 * (-1 * InitialCredit(my.df)))
+    return(TRUE)
+  else if (my.df[1,]$biz.dte <= 5) 
+    return(TRUE)
+  else if (as.numeric(Hi(underlying[date])) >= ShortCall(my.df)) 
+    return(TRUE)
+  else if (as.numeric(Lo(underlying[date])) <= ShortPut(my.df))
+    return(TRUE)
+  else 
+    return(FALSE)
+}
 # Other trade keeping method:
 #   1.  If there's an open trade, copy the current day's quote into the open 
 #       positions object
@@ -275,7 +291,7 @@ ShortPut = function(trades) {
 #   4.  Decide if we should make a new trade
 #   5.  If we trade, add to today's trade list
 #   6.  Copy all open trades to tomorrow
-#   6.  Log portfolio stats to today's portfolio stat object
+#   7.  Log portfolio stats to today's portfolio stat object
 
 
 # Create a stats object for every day, then rbind them all together later
@@ -288,46 +304,44 @@ dim(portfolio.stats)      = c(1, 9)
 rownames(portfolio.stats) = as.character(Sys.Date())
 colnames(portfolio.stats) = stats
 
+my.stats        = rep(list(portfolio.stats), length(my.data))
+names(my.stats) = names(my.data)
+
 # main backtest loop for now
-for (i in 1:length(my.data)) {
+for (i in 1:(length(my.data))-1) {
   # steps 1 through 3b
-  for (j in 2:length(my.data[[i]])) {
-    # update today's trades with today's quotes
-    my.data[[i]][[j]]$mid.price = 
-      my.data[[i]][[1]][
-        my.data[[i]][[1]]$Symbol %in% 
-          my.data[[i]][[j]]$Symbol,
-        ]$mid.price
-    # create indicies of today's trades to exit
-    to.exit = rep(0, length(my.data[[j]]))
-    # exit if 90% profit, 200% loss, 5 days till exp, short strike touch
-    if (FloatingProfit(my.data[[i]][[j]]) >= 0.89 * 
-        InitialCredit(my.data[[i]][[j]])) {
-      to.exit[j] = TRUE
-    } else if (FloatingProfit(my.data[[i]][[j]]) <= -2 * 
-               InitialCredit(my.data[[i]][[j]])) {
-      to.exit[j] = TRUE
-    } else if (my.data[[i]][[j]][1]$biz.dte <= 5) {
-      to.exit[j] = TRUE
-    } else if (Hi(underlying[i]) >= ShortCall(my.data[[i]][[j]])) {
-      to.exit[j] = TRUE
-    } else if (Lo(underlying[i]) <= ShortPut(my.data[[i]][[j]])) {
-      to.exit[j] = TRUE
+  if (i > 1) {
+    for (j in 2:length(my.data[[i]])) {
+      if (j > 2) { # don't run on first round with no trades
+        # update today's trades with today's quotes
+        my.data[[i]][[j]]$mid.price = 
+          my.data[[i]][[1]][
+            my.data[[i]][[1]]$Symbol %in% 
+              my.data[[i]][[j]]$Symbol,
+            ]$mid.price
+        # create indicies of today's trades to exit
+        to.exit = rep(0, length(my.data[[j]]))
+        # exit if 90% profit, 200% loss, 5 days till exp, short strike touch
+        if (ShouldExit(my.data[[i]][[j]], RUT, names(my.data[i])))
+          to.exit[j] = TRUE
+      } # to.exit is now something like c(TRUE, TRUE, TRUE, FALSE, FALSE)
+      # record open P/L as closed P/L for today for those indicies, cumsum later
+      if (length(to.exit[to.exit == TRUE]) > 0) {
+        my.stats[[i]][6] = sum(lapply, my.data[[i]][-1], FloatingProfit)
+      }
+      # set those indicies to NULL
+      my.data[[i]][to.exit] = NULL
     }
-  } # to.exit is now something like c(TRUE, TRUE, TRUE, FALSE, FALSE)
-  # record open P/L as closed P/L for today for those indicies, cumsum later
-  if (length(to.exit[to.exit == TRUE]) > 0) {
-    portfolio.stats[[i]][6] = sum(lapply, my.data[[i]][-1], FloatingProfit)
   }
-  # set those indicies to NULL
-  my.data[[i]][to.exit] = NULL
-  
-  # Step 4. Decide if we should make a new trade
+  # Step 4 and 5. Decide if we should make a new trade
   # in 1 TPS backtest, easy, you create new trade every day
-  my.data[[i]][[length(my.data[[i]]) + 1]] = FindCondor(my.data[[i]][1])
-  my.data[[i]][[length(my.data[[i]]) + 1]]$orig.price = 
-    my.data[[i]][[length(my.data[[i]]) + 1]]$mid.price
+  my.data[[i]][[length(my.data[[i]]) + 1]] = FindCondor(my.data[[i]][[1]])
+  my.data[[i]][[length(my.data[[i]])]]$orig.price = 
+    my.data[[i]][[length(my.data[[i]])]]$mid.price
   
+  # Step 6, copy all of today's trades to tomorrow
+  my.data[[i+1]][-1] = my.data[[i]][-1]
+  # Something something portfolio stats something
   
 }
 

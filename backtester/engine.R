@@ -76,6 +76,7 @@ EAE <- Vectorize(function(x, y) {isTRUE(all.equal(x, y))})
 
 # Setup date stuff
 library('bizdays')
+library('quantmod')
 cal.begin       = "2016-01-01"
 cal.end         = "2018-12-31"
 my.holidays     = c('2014-01-01', '2014-01-20', '2014-02-17',
@@ -191,6 +192,9 @@ FindCondor = function(my.df, is.list = FALSE) {
   my.df[PickByDelta(my.df$Delta, -11),]$Existing.Posn. = -1
   # Existing.Posn is NA by default, so this works but is not intuitive:
   open.trades = my.df[!is.na(my.df$Existing.Posn.),]
+  # add new $orig.price column for later
+  open.trades$orig.price = open.trades$mid.price
+  return(open.trades)
 }
 
 # small example, works fine
@@ -226,15 +230,15 @@ names(my.data) = as.Date(names(my.data), "%Y%m%d")
 #      (the actual value of the position tomorrow)
 
 # 1
-my.data[['2017-03-07']][[2]] = FindCondor(my.data[['2017-03-06']][[1]])
+#my.data[['2017-03-07']][[2]] = FindCondor(my.data[['2017-03-06']][[1]])
 # 2
-my.data[['2017-03-07']][[2]]$orig.price = my.data[['2017-03-07']][[2]]$mid.price
+#my.data[['2017-03-07']][[2]]$orig.price = my.data[['2017-03-07']][[2]]$mid.price
 # 3, using cool %in% operator
-my.data[['2017-03-07']][[2]]$mid.price = 
-  my.data[['2017-03-07']][[1]][
-    my.data[['2017-03-07']][[1]]$Symbol %in% 
-    my.data[['2017-03-07']][[2]]$Symbol,
-  ]$mid.price
+#my.data[['2017-03-07']][[2]]$mid.price = 
+#  my.data[['2017-03-07']][[1]][
+#    my.data[['2017-03-07']][[1]]$Symbol %in% 
+#    my.data[['2017-03-07']][[2]]$Symbol,
+#  ]$mid.price
 
 # find floating profit given df of open trades w/ column orig.price
 FloatingProfit = function(trades) {
@@ -308,6 +312,7 @@ names(my.stats) = names(my.data)
 
 # main backtest loop for now, operates on days
 for (i in 1:(length(my.data)-1)) {
+  #browser()
   # steps 1 through 3b, operates on open trades
   if (i > 1 && length(my.data[[i]]) >= 2) { # don't run w/ 0 trades open
     for (j in 2:length(my.data[[i]])) {
@@ -336,8 +341,6 @@ for (i in 1:(length(my.data)-1)) {
   # Step 4 and 5. Decide if we should make a new trade
   # in 1 TPS backtest, easy, you create new trade every day
   my.data[[i]][[length(my.data[[i]]) + 1]] = FindCondor(my.data[[i]][[1]])
-  my.data[[i]][[length(my.data[[i]])]]$orig.price = 
-    my.data[[i]][[length(my.data[[i]])]]$mid.price
   
   # Step 6, copy all of today's still-open trades to tomorrow
   my.data[[i+1]] = append(my.data[[i+1]], my.data[[i]][-1])

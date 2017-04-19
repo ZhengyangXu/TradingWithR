@@ -135,9 +135,7 @@ PickByDelta = function(my.deltas, my.value) {
 # example:
 #   data in a file called SPX201703201530.csv
 #   my.df = get.quotes.csv("SPX", 20170320, 1530)
-OptionQuotesCsv = function(ticker, date.code, time.code) {
-  options.file  = paste(ticker, date.code, time.code, '.csv',
-                       sep='')
+OptionQuotesCsv = function(options.file) {
   my.data       = read.csv(options.file)
   return(my.data[-1,]) # first row is underlying. use price.quotes for that
 }
@@ -213,14 +211,25 @@ FindCondor = function(my.df, is.list = FALSE) {
 
 # this is a simple example that breaks on weekends, but just using it
 # to test the idea of a list of lists for the data structure
-my.data = rep(list(list()), length(20170306:20170310))
-names(my.data) = 20170306:20170310
-for (i in 20170306:20170310) {
-  my.data[[as.character(i)]][[1]] = EnrichOptionsQuotes(
-                                      OptionQuotesCsv("RUT", i, 1600)
-                                    )
+# my.data = rep(list(list()), length(20170306:20170310))
+# names(my.data) = 20170306:20170310
+# for (i in 20170306:20170310) {
+#   my.data[[as.character(i)]][[1]] = EnrichOptionsQuotes(
+#                                       OptionQuotesCsv("RUT", i, 1600)
+#                                     )
+# }
+
+# redo with many files
+file.names     = list.files(pattern="*.csv")
+my.data        = rep(list(list()), length(file.names))
+
+for (i in 1:length(file.names)) {
+  my.data[[i]][[1]] = EnrichOptionsQuotes(
+                        OptionQuotesCsv(file.names[i])
+                      )
 }
-names(my.data) = as.Date(names(my.data), "%Y%m%d")
+
+names(my.data) = as.Date(substr(file.names, 4, 11), "%Y%m%d")
 
 # Steps to making a trade:
 #   1. Copy trades to tomorrow's [[2]]

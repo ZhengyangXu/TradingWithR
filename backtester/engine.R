@@ -240,7 +240,7 @@ my.data[['2017-03-07']][[2]]$mid.price =
 FloatingProfit = function(trades) {
   floating.profit = (trades$mid.price - trades$orig.price) * 
     trades$Existing.Posn.
-  floating.profit = 100*sum(floating.profit)
+  floating.profit = sum(floating.profit)
 }
 
 # find initial credit given df of open trades w/ column orig.price
@@ -301,46 +301,46 @@ stats = c("Delta", "Gamma",      "Theta",    "Vega",     "Rho",
 # this needs to copy the my.data object for dates
 portfolio.stats           = rep(0, 9) 
 dim(portfolio.stats)      = c(1, 9)
-rownames(portfolio.stats) = as.character(Sys.Date())
 colnames(portfolio.stats) = stats
 
 my.stats        = rep(list(portfolio.stats), length(my.data))
 names(my.stats) = names(my.data)
 
-# main backtest loop for now
-for (i in 1:(length(my.data))-1) {
-  # steps 1 through 3b
-  if (i > 1) {
+# main backtest loop for now, operates on days
+for (i in 1:(length(my.data)-1)) {
+  # steps 1 through 3b, operates on open trades
+  if (i > 1 && length(my.data[[i]]) >= 2) { # don't run w/ 0 trades open
     for (j in 2:length(my.data[[i]])) {
-      if (j > 2) { # don't run on first round with no trades
-        # update today's trades with today's quotes
-        my.data[[i]][[j]]$mid.price = 
-          my.data[[i]][[1]][
-            my.data[[i]][[1]]$Symbol %in% 
-              my.data[[i]][[j]]$Symbol,
-            ]$mid.price
-        # create indicies of today's trades to exit
-        to.exit = rep(0, length(my.data[[j]]))
-        # exit if 90% profit, 200% loss, 5 days till exp, short strike touch
-        if (ShouldExit(my.data[[i]][[j]], RUT, names(my.data[i])))
-          to.exit[j] = TRUE
-      } # to.exit is now something like c(TRUE, TRUE, TRUE, FALSE, FALSE)
+      # update today's trades with today's quotes
+      my.data[[i]][[j]]$mid.price = 
+        my.data[[i]][[1]][
+          my.data[[i]][[1]]$Symbol %in% my.data[[i]][[j]]$Symbol,
+        ]$mid.price
+      # create indicies of today's trades to exit
+      to.exit = rep(FALSE, length(my.data[[i]])) # built in ignoring of quote df
+      # exit if 90% profit, 200% loss, 5 days till exp, short strike touch
+      if (ShouldExit(my.data[[i]][[j]], RUT, names(my.data[i])))
+        to.exit[j] = TRUE
+      # to.exit is now something like c(TRUE, TRUE, TRUE, FALSE, FALSE)
       # record open P/L as closed P/L for today for those indicies, cumsum later
       if (length(to.exit[to.exit == TRUE]) > 0) {
-        my.stats[[i]][6] = sum(lapply, my.data[[i]][-1], FloatingProfit)
+        # record profit as closed
+        my.stats[[i]][6] = sum(unlist(lapply(my.data[[i]][to.exit], 
+                                      FloatingProfit)))
+        # close trades by setting those indicies to NULL
+        my.data[[i]][to.exit] = NULL
       }
-      # set those indicies to NULL
-      my.data[[i]][to.exit] = NULL
     }
   }
+  
   # Step 4 and 5. Decide if we should make a new trade
   # in 1 TPS backtest, easy, you create new trade every day
   my.data[[i]][[length(my.data[[i]]) + 1]] = FindCondor(my.data[[i]][[1]])
   my.data[[i]][[length(my.data[[i]])]]$orig.price = 
     my.data[[i]][[length(my.data[[i]])]]$mid.price
   
-  # Step 6, copy all of today's trades to tomorrow
-  my.data[[i+1]][-1] = my.data[[i]][-1]
+  # Step 6, copy all of today's still-open trades to tomorrow
+  my.data[[i+1]] = append(my.data[[i+1]], my.data[[i]][-1])
   # Something something portfolio stats something
   
 }

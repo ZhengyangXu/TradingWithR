@@ -209,17 +209,8 @@ FindCondor = function(my.df, is.list = FALSE) {
 # when you make trades, fill in the open.trades for tomorrow with symbols
 # and position sizes
 
-# this is a simple example that breaks on weekends, but just using it
-# to test the idea of a list of lists for the data structure
-# my.data = rep(list(list()), length(20170306:20170310))
-# names(my.data) = 20170306:20170310
-# for (i in 20170306:20170310) {
-#   my.data[[as.character(i)]][[1]] = EnrichOptionsQuotes(
-#                                       OptionQuotesCsv("RUT", i, 1600)
-#                                     )
-# }
-
-# redo with many files
+# redo data load with many files. filename format is mandatory and 
+# only works for 3 letter symbols (e.g. SYM): SYMYYYYMMDDHHMM.csv
 file.names     = list.files(pattern="*.csv")
 my.data        = rep(list(list()), length(file.names))
 

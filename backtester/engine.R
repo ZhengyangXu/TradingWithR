@@ -77,8 +77,8 @@ EAE <- Vectorize(function(x, y) {isTRUE(all.equal(x, y))})
 # Setup date stuff
 library('bizdays')
 library('quantmod')
-cal.begin       = "2016-01-01"
-cal.end         = "2018-12-31"
+cal.begin       = "2014-01-01"
+cal.end         = "2019-01-01"
 my.holidays     = c('2014-01-01', '2014-01-20', '2014-02-17',
                     '2014-04-18', '2014-05-26', '2014-07-03',
                     '2014-09-01', '2014-11-27', '2014-12-25',
@@ -103,7 +103,7 @@ my.cal = create.calendar(holidays = my.holidays,
                          weekdays=c("saturday", "sunday"),
                          name="my.cal")
 setwd("~/Documents/TradingWithR/backtester/data")
-getSymbols("^RUT", from="2017-01-01")
+getSymbols("^RUT", from="2015-01-01")
 
 # PickByDelta: return an index of x that has the closest value to y. if there
 #              is a tie, return the first one you come to. This function
@@ -152,6 +152,9 @@ OptionQuotesCsv = function(options.file) {
 #   cal.dte, calendar days until expiry
 #   mid.price, the average of the quoted bid and ask (NAs?)
 EnrichOptionsQuotes = function(my.df) {
+  my.df       = my.df[!is.na(my.df$Date),]
+  my.df       = my.df[!is.na(my.df$Bid),]
+  my.df       = my.df[!is.na(my.df$Asked),]
   my.exp.date = as.Date(as.character(my.df$Exp.Date), "%y%m%d")
   my.iso.date = as.Date(as.character(my.df$Date), "%y%m%d")
   biz.dte     = bizdays(my.iso.date,
@@ -182,17 +185,22 @@ FindCondor = function(my.df, is.list = FALSE) {
   my.df = my.df[!grepl("D\\d{1,2}$", my.df$Symbol, perl = TRUE),]
   # clean up to only include possible candidates
   my.df = subset(my.df, cal.dte > 49 & cal.dte < 76)
-  # if you have two expirations, pick the minimum for now
-  my.df = subset(my.df, cal.dte == min(cal.dte))
-  my.df[PickByDelta(my.df$Delta,   8),]$Existing.Posn. =  1
-  my.df[PickByDelta(my.df$Delta,  11),]$Existing.Posn. = -1
-  my.df[PickByDelta(my.df$Delta,  -8),]$Existing.Posn. =  1
-  my.df[PickByDelta(my.df$Delta, -11),]$Existing.Posn. = -1
-  # Existing.Posn is NA by default, so this works but is not intuitive:
-  open.trades = my.df[!is.na(my.df$Existing.Posn.),]
-  # add new $orig.price column for later
-  open.trades$orig.price = open.trades$mid.price
-  return(open.trades)
+  # if you have no expirations (a few days like this), return NULL
+  if (nrow(my.df) == 0) {
+    return(NULL)
+  } else {
+    # if you have two expirations, pick the minimum for now
+    my.df = subset(my.df, cal.dte == min(cal.dte))
+    my.df[PickByDelta(my.df$Delta,   8),]$Existing.Posn. =  1
+    my.df[PickByDelta(my.df$Delta,  11),]$Existing.Posn. = -1
+    my.df[PickByDelta(my.df$Delta,  -8),]$Existing.Posn. =  1
+    my.df[PickByDelta(my.df$Delta, -11),]$Existing.Posn. = -1
+    # Existing.Posn is NA by default, so this works but is not intuitive:
+    open.trades = my.df[!is.na(my.df$Existing.Posn.),]
+    # add new $orig.price column for later
+    open.trades$orig.price = open.trades$mid.price
+    return(open.trades)
+  }
 }
 
 # small example, works fine
@@ -293,7 +301,10 @@ ShouldEnter = function(my.day) {
     open.exps = unique(my.open.trades$my.exp.date)
   }
   would.trade.exp = unique(FindCondor(my.day[[1]])$my.exp.date)
-  if (would.trade.exp %in% open.exps) {
+  # check for null before running %in%
+  if (is.null(would.trade.exp)) {
+    return(FALSE)
+  } else if (would.trade.exp %in% open.exps) {
     return(FALSE)
   }
 }
@@ -338,23 +349,28 @@ for (i in 1:(length(my.data)-1)) {
   if (i > 1 && length(my.data[[i]]) >= 2) { # don't run w/ 0 trades open
     for (j in 2:length(my.data[[i]])) {
       # update today's trades with today's quotes
-      my.data[[i]][[j]]$mid.price = 
-        my.data[[i]][[1]][
-          my.data[[i]][[1]]$Symbol %in% my.data[[i]][[j]]$Symbol,
-        ]$mid.price
-      # create indicies of today's trades to exit
-      to.exit = rep(FALSE, length(my.data[[i]])) # built in ignoring of quote df
-      # exit if 90% profit, 200% loss, 5 days till exp, short strike touch
-      if (ShouldExit(my.data[[i]][[j]], RUT, names(my.data[i])))
-        to.exit[j] = TRUE
-      # to.exit is now something like c(TRUE, TRUE, TRUE, FALSE, FALSE)
-      # record open P/L as closed P/L for today for those indicies, cumsum later
-      if (length(to.exit[to.exit == TRUE]) > 0) {
-        # record profit as closed
-        my.stats[[i]][6] = sum(unlist(lapply(my.data[[i]][to.exit], 
-                                      FloatingProfit)))
-        # close trades by setting those indicies to NULL
-        my.data[[i]][to.exit] = NULL
+      # if your quoted symbols aren't there, raise error
+      if (any(my.data[[i]][[1]]$Symbol %in% my.data[[i]][[j]]$Symbol)) {
+        my.data[[i]][[j]]$mid.price = 
+          my.data[[i]][[1]][
+            my.data[[i]][[1]]$Symbol %in% my.data[[i]][[j]]$Symbol,
+          ]$mid.price
+        # create indicies of today's trades to exit
+        to.exit = rep(FALSE, length(my.data[[i]])) # built in ignoring of quote df
+        # exit if 90% profit, 200% loss, 5 days till exp, short strike touch
+        if (ShouldExit(my.data[[i]][[j]], RUT, names(my.data[i])))
+          to.exit[j] = TRUE
+        # to.exit is now something like c(TRUE, TRUE, TRUE, FALSE, FALSE)
+        # record open P/L as closed P/L for today for those indicies, cumsum later
+        if (length(to.exit[to.exit == TRUE]) > 0) {
+          # record profit as closed
+          my.stats[[i]][6] = sum(unlist(lapply(my.data[[i]][to.exit], 
+                                        FloatingProfit)))
+          # close trades by setting those indicies to NULL
+          my.data[[i]][to.exit] = NULL
+        }
+      } else {
+        stop("Current quote does not contain entries for open trades")
       }
     }
   }
@@ -362,10 +378,12 @@ for (i in 1:(length(my.data)-1)) {
   # Step 4 and 5. Decide if we should make a new trade
   # in 1 TPS backtest, easy, you create new trade every day
   # in 1 TPX backtest, use ShouldEnter()
+  # if FindCondor returns NULL, this shouldn't do anything (I think?)
   if (ShouldEnter(my.data[[i]]))
     my.data[[i]][[length(my.data[[i]]) + 1]] = FindCondor(my.data[[i]][[1]])
   
   # Step 6, copy all of today's still-open trades to tomorrow
+  # Assumes you always take a trade on first day
   my.data[[i+1]] = append(my.data[[i+1]], my.data[[i]][-1])
   # Something something portfolio stats something
   

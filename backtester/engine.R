@@ -277,6 +277,27 @@ ShouldExit = function(my.df, underlying, date) {
   else 
     return(FALSE)
 }
+
+# see if entry conditions are met for a given day's list 
+# idea here will be to check if you have an open trade on that quote day
+# for the given condor you'd get out of the quote from that day
+# Don't open a trade in more than one expiration at a time
+# Don't open a trade outside of given trade window (min/max days)
+#   (that's handled by FindCondor function)
+ShouldEnter = function(my.day) {
+  #browser()
+  my.open.trades = do.call('rbind', my.day[-1])
+  if (is.null(my.open.trades)) {
+    return(TRUE)
+  } else {
+    open.exps = unique(my.open.trades$my.exp.date)
+  }
+  would.trade.exp = unique(FindCondor(my.day[[1]])$my.exp.date)
+  if (would.trade.exp %in% open.exps) {
+    return(FALSE)
+  }
+}
+
 # Other trade keeping method:
 #   1.  If there's an open trade, copy the current day's quote into the open 
 #       positions object
@@ -340,7 +361,9 @@ for (i in 1:(length(my.data)-1)) {
   
   # Step 4 and 5. Decide if we should make a new trade
   # in 1 TPS backtest, easy, you create new trade every day
-  my.data[[i]][[length(my.data[[i]]) + 1]] = FindCondor(my.data[[i]][[1]])
+  # in 1 TPX backtest, use ShouldEnter()
+  if (ShouldEnter(my.data[[i]]))
+    my.data[[i]][[length(my.data[[i]]) + 1]] = FindCondor(my.data[[i]][[1]])
   
   # Step 6, copy all of today's still-open trades to tomorrow
   my.data[[i+1]] = append(my.data[[i+1]], my.data[[i]][-1])

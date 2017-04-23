@@ -103,7 +103,10 @@ my.cal = create.calendar(holidays = my.holidays,
                          weekdays=c("saturday", "sunday"),
                          name="my.cal")
 setwd("~/Documents/TradingWithR/backtester/data")
-getSymbols("^RUT", from="2015-01-01")
+getSymbols("^RUT", from=cal.begin)
+
+# Choose 1TPX or 1TPS
+global.mode = "1TPS"
 
 # PickByDelta: return an index of x that has the closest value to y. if there
 #              is a tie, return the first one you come to. This function
@@ -257,7 +260,7 @@ FloatingProfit = function(trades) {
 
 # find initial credit given df of open trades w/ column orig.price
 InitialCredit = function(trades) {
-  net.credit = sum(trades$Existing.Posn. * trades$mid.price)
+  net.credit = sum(trades$Existing.Posn. * trades$orig.price)
 }
 
 # return the strike price of the short call in a single condor
@@ -274,9 +277,9 @@ ShortPut = function(trades) {
 ShouldExit = function(my.df, underlying, date) {
   if (FloatingProfit(my.df) >= 0.89 * (-1 * InitialCredit(my.df))) 
     return(TRUE)
-  else if (FloatingProfit(my.df) <= -2 * (-1 * InitialCredit(my.df)))
+  else if (FloatingProfit(my.df) <= 2 * InitialCredit(my.df)) # negative val
     return(TRUE)
-  else if (my.df[1,]$biz.dte <= 5) 
+  else if (as.numeric(my.df[1,]$my.exp.date - date) <= 5) 
     return(TRUE)
   else if (as.numeric(Hi(underlying[date])) >= ShortCall(my.df)) 
     return(TRUE)
@@ -304,9 +307,26 @@ ShouldEnter = function(my.day) {
   # check for null before running %in%
   if (is.null(would.trade.exp)) {
     return(FALSE)
-  } else if (would.trade.exp %in% open.exps) {
+  } else if (would.trade.exp %in% open.exps && global.mode == "1TPX") {
     return(FALSE)
+  } else {
+    return(TRUE)
   }
+}
+
+# output a short trade summary data frame given:
+# a trade you're about to close
+# the current date as.Date
+TradeSummary = function(my.df, my.date) {
+  trade.data = list(open.date     = my.df[1,]$my.iso.date,
+                    exp.month     = substr(my.df[1,]$Description, 1, 3),
+                    strikes       = toString(my.df$Strike.Price),
+                    init.cred     = InitialCredit(my.df),
+                    float.profit  = FloatingProfit(my.df),
+                    cal.days.open = as.numeric(my.date - my.df[1,]$my.iso.date),
+                    close.date    = my.date
+                    )
+  return(as.data.frame(trade.data))
 }
 
 # Other trade keeping method:
@@ -339,39 +359,62 @@ portfolio.stats           = rep(0, 9)
 dim(portfolio.stats)      = c(1, 9)
 colnames(portfolio.stats) = stats
 
-my.stats        = rep(list(portfolio.stats), length(my.data))
-names(my.stats) = names(my.data)
+my.stats         = rep(list(portfolio.stats), length(my.data))
+names(my.stats)  = names(my.data)
+
+total.trades     = 0
+my.closed.trades = list()
 
 # main backtest loop for now, operates on days
 for (i in 1:(length(my.data)-1)) {
   #browser()
+  #if (i == 50) break
   # steps 1 through 3b, operates on open trades
   if (i > 1 && length(my.data[[i]]) >= 2) { # don't run w/ 0 trades open
+    # create indicies of today's trades to exit
+    to.exit = rep(FALSE, length(my.data[[i]])) # ignore quote df w/ FALSE
     for (j in 2:length(my.data[[i]])) {
+      # if you ever close a trade before getting done with this loop
+      # j will be ahead of the number of entries. check that.
+      if (j > length(my.data[[i]])) break
       # update today's trades with today's quotes
       # if your quoted symbols aren't there, raise error
-      if (any(my.data[[i]][[1]]$Symbol %in% my.data[[i]][[j]]$Symbol)) {
-        my.data[[i]][[j]]$mid.price = 
-          my.data[[i]][[1]][
-            my.data[[i]][[1]]$Symbol %in% my.data[[i]][[j]]$Symbol,
-          ]$mid.price
-        # create indicies of today's trades to exit
-        to.exit = rep(FALSE, length(my.data[[i]])) # built in ignoring of quote df
+      to.update = my.data[[i]][[1]]$Symbol %in% my.data[[i]][[j]]$Symbol
+      num.true  = length(to.update[to.update == TRUE])
+      if (num.true <= 4) {
+        if (num.true < 4) {
+          symbols.to.update    = my.data[[i]][[1]][to.update,]$Symbol
+          tmp.update           = subset(my.data[[i]][[j]], 
+                                        Symbol %in% symbols.to.update)
+          # TODO how do you know what order this is in?
+          tmp.update$mid.price = my.data[[i]][[1]][to.update,]$mid.price
+          my.data[[i]][[j]]    = rbind(tmp.update, 
+                                       subset(my.data[[i]][[j]], 
+                                              !(Symbol %in% symbols.to.update)))
+          my.data[[i]][[j]] = my.data[[i]][[j]][order(
+                                               my.data[[i]][[j]]$Strike.Price),]
+        } else {
+          # TODO how do you know what order this is in?
+          my.data[[i]][[j]]$mid.price = my.data[[i]][[1]][to.update,]$mid.price
+        }
         # exit if 90% profit, 200% loss, 5 days till exp, short strike touch
-        if (ShouldExit(my.data[[i]][[j]], RUT, names(my.data[i])))
+        if (ShouldExit(my.data[[i]][[j]], RUT, as.Date(names(my.data)[i])))
           to.exit[j] = TRUE
         # to.exit is now something like c(TRUE, TRUE, TRUE, FALSE, FALSE)
-        # record open P/L as closed P/L for today for those indicies, cumsum later
-        if (length(to.exit[to.exit == TRUE]) > 0) {
-          # record profit as closed
-          my.stats[[i]][6] = sum(unlist(lapply(my.data[[i]][to.exit], 
-                                        FloatingProfit)))
-          # close trades by setting those indicies to NULL
-          my.data[[i]][to.exit] = NULL
-        }
       } else {
-        stop("Current quote does not contain entries for open trades")
+        stop(paste("Quote for", 
+                   names(my.data)[i], 
+                   "does not contain entries for open trades"))
       }
+    }
+    # record open P/L as closed P/L for today for those indicies set TRUE
+    # use cumsum() later to build an equity curve
+    if (length(to.exit[to.exit == TRUE]) > 0) {
+      # record profit as closed
+      my.stats[[i]][6] = sum(unlist(lapply(my.data[[i]][to.exit], 
+                                           FloatingProfit)))
+      # close trades by setting those indicies to NULL
+      my.data[[i]][to.exit] = NULL
     }
   }
   
@@ -379,15 +422,37 @@ for (i in 1:(length(my.data)-1)) {
   # in 1 TPS backtest, easy, you create new trade every day
   # in 1 TPX backtest, use ShouldEnter()
   # if FindCondor returns NULL, this shouldn't do anything (I think?)
-  if (ShouldEnter(my.data[[i]]))
+  if (global.mode == "1TPX" && 
+      ShouldEnter(my.data[[i]]) && 
+      !is.null(FindCondor(my.data[[i]][[1]])) &&
+      nrow(FindCondor(my.data[[i]][[1]])) == 4) {
     my.data[[i]][[length(my.data[[i]]) + 1]] = FindCondor(my.data[[i]][[1]])
-  
+    total.trades = total.trades + 1
+  } else if (!is.null(FindCondor(my.data[[i]][[1]])) &&
+             global.mode == "1TPS" &&
+             nrow(FindCondor(my.data[[i]][[1]])) == 4) {
+    my.data[[i]][[length(my.data[[i]]) + 1]] = FindCondor(my.data[[i]][[1]])
+    
+    total.trades = total.trades + 1
+  }
+  my.stats[[i]][7] = sum(unlist(lapply(my.data[[i]][-1], 
+                                       FloatingProfit)))
   # Step 6, copy all of today's still-open trades to tomorrow
   # Assumes you always take a trade on first day
   my.data[[i+1]] = append(my.data[[i+1]], my.data[[i]][-1])
   # Something something portfolio stats something
   
 }
+
+df.stats = data.frame(
+  matrix(
+    unlist(my.stats), 
+    nrow=length(my.stats), 
+    byrow=T, 
+    dimnames=list(names(my.stats), colnames(portfolio.stats))))
+
+plot(1:nrow(df.stats), cumsum(df.stats$Closed.P.L) + df.stats$Open.P.L, type='l', col='red')
+lines(1:nrow(df.stats), cumsum(df.stats$Closed.P.L))
 
 
 

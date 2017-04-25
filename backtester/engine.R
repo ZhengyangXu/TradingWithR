@@ -9,8 +9,8 @@
 #          the symbol names? I think this is how it normally works.
 #           i. Probably starting with a list of data frames
 #    2. DONE be able to choose options based on delta in the quotes
-#    3. be able to track open P/L and closed P/L
-#    4. be able to exit a trade on delta in the quotes, P/L, DTE
+#    3. DONE be able to track open P/L and closed P/L
+#    4. DONE be able to exit a trade on delta in the quotes, P/L, DTE
 #    5. be able to print the greeks of the total position every time interval
 #    6. With all the above, should be able to backtest an iron condor strategy
 
@@ -275,15 +275,19 @@ ShortPut = function(trades) {
 
 # see if exit conditions are met for a given condor, xts of underlying, date
 ShouldExit = function(my.df, underlying, date) {
+  if (nrow(underlying[as.character(date)]) == 0)
+    stop(paste(as.character(date), "not a trading day"))
+  if (is.null(my.cal) || !exists("my.cal")) # should check dates too
+    stop("global calendar (my.cal) does not exist or is NULL")
   if (FloatingProfit(my.df) >= 0.89 * (-1 * InitialCredit(my.df))) 
     return(TRUE)
   else if (FloatingProfit(my.df) <= 2 * InitialCredit(my.df)) # negative val
     return(TRUE)
-  else if (as.numeric(my.df[1,]$my.exp.date - date) <= 5) 
+  else if (bizdays(date, as.Date(my.df[1,]$my.exp.date), my.cal) <= 5) 
     return(TRUE)
-  else if (as.numeric(Hi(underlying[date])) >= ShortCall(my.df)) 
+  else if (as.numeric(Hi(underlying[as.character(date)])) >= ShortCall(my.df)) 
     return(TRUE)
-  else if (as.numeric(Lo(underlying[date])) <= ShortPut(my.df))
+  else if (as.numeric(Lo(underlying[as.character(date)])) <= ShortPut(my.df))
     return(TRUE)
   else 
     return(FALSE)
@@ -365,10 +369,11 @@ names(my.stats)  = names(my.data)
 total.trades     = 0
 my.closed.trades = list()
 
+# 2015-09-08 had fucked up price on SEP 1300 calls, fixed by hand in csv
 # main backtest loop for now, operates on days
 for (i in 1:(length(my.data)-1)) {
   #browser()
-  #if (i == 50) break
+  #if (i == 170) browser()
   # steps 1 through 3b, operates on open trades
   if (i > 1 && length(my.data[[i]]) >= 2) { # don't run w/ 0 trades open
     # create indicies of today's trades to exit
@@ -444,15 +449,97 @@ for (i in 1:(length(my.data)-1)) {
   
 }
 
+# Easier view of stats manually after the fact
 df.stats = data.frame(
-  matrix(
-    unlist(my.stats), 
-    nrow=length(my.stats), 
-    byrow=T, 
-    dimnames=list(names(my.stats), colnames(portfolio.stats))))
+            matrix(
+              unlist(my.stats), 
+              nrow=length(my.stats), 
+              byrow=T, 
+              dimnames=list(names(my.stats), colnames(portfolio.stats))))
 
-plot(1:nrow(df.stats), cumsum(df.stats$Closed.P.L) + df.stats$Open.P.L, type='l', col='red')
-lines(1:nrow(df.stats), cumsum(df.stats$Closed.P.L))
+# Plot the floating and closed profit
+plot(1:nrow(df.stats), 
+     cumsum(df.stats$Closed.P.L) + df.stats$Open.P.L, 
+     type='l', 
+     col='red')
+lines(1:nrow(df.stats), 
+      cumsum(df.stats$Closed.P.L))
+
+# Unit Tests
+# Test ShouldExit does not close brand new trades
+TestNoNewExit = function() {
+  my.df = read.csv("sample-trade")
+  return(ShouldExit(my.df, RUT, as.Date("2015-01-02")) == FALSE)
+}
+# Test ShouldExit's profit-based exit
+TestProfitExit = function() {
+  my.df = read.csv("sample-trade")
+  my.df$mid.price = c(6, 1, 1, 4)
+  return(ShouldExit(my.df, RUT, as.Date("2015-01-02")) == TRUE)
+}
+# Test ShouldExit's loss-based exit
+TestLossExit = function() {
+  my.df = read.csv("sample-trade")
+  my.df$mid.price = c(1, 10, 10, 1)
+  return(ShouldExit(my.df, RUT, as.Date("2015-01-02")) == TRUE)
+}
+# Test ShouldExit's time-based exit doesn't take you out early
+TestEarlyExit = function() {
+  my.df = read.csv("sample-trade")
+  return(ShouldExit(my.df, RUT, as.Date("2016-01-04")) == FALSE)
+}
+# Test ShouldExit's time-based exit doesn't take you out late
+TestLateExit = function() {
+  my.df = read.csv("sample-trade")
+  my.date  = "2016-02-16"
+  modified.rut = RUT
+  modified.rut[my.date,3] = xts(2000, order.by=as.Date(my.date))
+  return(ShouldExit(my.df, modified.rut, as.Date(my.date)) == TRUE)
+}
+# Test ShouldExit's short-strike-based exit
+TestShortCallExit = function() {
+  my.df = read.csv("sample-trade")
+  my.date  = "2016-02-01"
+  modified.rut = RUT
+  modified.rut[my.date,2] = xts(2000, order.by=as.Date(my.date))
+  return(ShouldExit(my.df, modified.rut, as.Date(my.date)) == TRUE)
+}
+TestShortPutExit = function() {
+  my.df = read.csv("sample-trade")
+  my.date  = "2016-02-01" # this date already is lower than short put
+  return(ShouldExit(my.df, RUT, as.Date(my.date)) == TRUE)
+}
+
+unit.tests = c(TestEarlyExit(), 
+               TestLateExit(), 
+               TestLossExit(), 
+               TestNoNewExit(), 
+               TestProfitExit(), 
+               TestShortCallExit(), 
+               TestShortPutExit())
+if (all(unit.tests)) {
+  print("Tests pass")
+} else{
+  print(paste("Tests failed: ", toString(unit.tests)))
+}
+
+
+# Profit factor
+sum.wins   = sum(subset(df.stats, Closed.P.L > 0)$Closed.P.L)
+sum.losses = sum(subset(df.stats, Closed.P.L < 0)$Closed.P.L)
+if (sum.losses == 0) {
+  print("Profit factor: inf.")
+} else {
+  print(paste("Profit factor: ", abs(sum.wins / sum.losses), sep=""))
+}
+
+
+
+
+
+
+
+
 
 
 

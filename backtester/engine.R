@@ -104,6 +104,10 @@ my.cal = create.calendar(holidays = my.holidays,
                          name="my.cal")
 setwd("~/Documents/TradingWithR/backtester/data")
 getSymbols("^RUT", from=cal.begin)
+oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
+oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
+kOisufThresh = 20
+
 
 # Choose 1TPX or 1TPS
 global.mode = "1TPS"
@@ -300,7 +304,6 @@ ShouldExit = function(my.df, underlying, date) {
 # Don't open a trade outside of given trade window (min/max days)
 #   (that's handled by FindCondor function)
 ShouldEnter = function(my.day) {
-  #browser()
   my.open.trades = do.call('rbind', my.day[-1])
   if (is.null(my.open.trades)) {
     return(TRUE)
@@ -328,8 +331,7 @@ TradeSummary = function(my.df, my.date) {
                     init.cred     = InitialCredit(my.df),
                     float.profit  = FloatingProfit(my.df),
                     cal.days.open = as.numeric(my.date - my.df[1,]$my.iso.date),
-                    close.date    = my.date
-                    )
+                    close.date    = my.date)
   return(as.data.frame(trade.data))
 }
 
@@ -428,6 +430,7 @@ for (i in 1:(length(my.data)-1)) {
   # in 1 TPX backtest, use ShouldEnter()
   # if FindCondor returns NULL, this shouldn't do anything (I think?)
   if (global.mode == "1TPX" && 
+      as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh &&
       ShouldEnter(my.data[[i]]) && 
       !is.null(FindCondor(my.data[[i]][[1]])) &&
       nrow(FindCondor(my.data[[i]][[1]])) == 4) {
@@ -435,6 +438,7 @@ for (i in 1:(length(my.data)-1)) {
     total.trades = total.trades + 1
   } else if (!is.null(FindCondor(my.data[[i]][[1]])) &&
              global.mode == "1TPS" &&
+             as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh &&
              nrow(FindCondor(my.data[[i]][[1]])) == 4) {
     my.data[[i]][[length(my.data[[i]]) + 1]] = FindCondor(my.data[[i]][[1]])
     
@@ -520,7 +524,7 @@ unit.tests = c(TestEarlyExit(),
 if (all(unit.tests)) {
   print("Tests pass")
 } else{
-  print(paste("Tests failed: ", toString(unit.tests)))
+  print(paste("....-----++++[Tests failed: ", toString(unit.tests)))
 }
 
 

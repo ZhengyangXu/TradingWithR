@@ -116,9 +116,10 @@ my.cal = create.calendar(holidays = my.holidays,
                          name="my.cal")
 setwd("~/Documents/TradingWithR/backtester/data")
 getSymbols("^RUT", from=cal.begin)
-oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
+#oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
+oisuf.raw    = read.csv("../oisuf-rut-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
-kOisufThresh = -200
+kOisufThresh = 20
 
 
 # Choose 1TPX or 1TPS
@@ -381,13 +382,14 @@ my.stats         = rep(list(portfolio.stats), length(my.data))
 names(my.stats)  = names(my.data)
 
 total.trades     = 0
+num.inc.quotes   = 0
 my.closed.trades = list()
 
 # 2015-09-08 had fucked up price on SEP 1300 calls, fixed by hand in csv
 # main backtest loop for now, operates on days
 for (i in 1:(length(my.data)-1)) {
   #browser()
-  #if (i == 170) browser()
+  #if (i > 402) browser()
   # steps 1 through 3b, operates on open trades
   if (i > 1 && length(my.data[[i]]) >= 2) { # don't run w/ 0 trades open
     # create indicies of today's trades to exit
@@ -402,6 +404,7 @@ for (i in 1:(length(my.data)-1)) {
       num.true  = length(to.update[to.update == TRUE])
       if (num.true <= 4) {
         if (num.true < 4) {
+          num.inc.quotes = num.inc.quotes + 1
           symbols.to.update    = my.data[[i]][[1]][to.update,]$Symbol
           tmp.update           = subset(my.data[[i]][[j]], 
                                         Symbol %in% symbols.to.update)
@@ -459,8 +462,8 @@ for (i in 1:(length(my.data)-1)) {
   my.stats[[i]][7] = sum(unlist(lapply(my.data[[i]][-1], 
                                        FloatingProfit)))
   # Step 6, copy all of today's still-open trades to tomorrow
-  # Assumes you always take a trade on first day
-  my.data[[i+1]] = append(my.data[[i+1]], my.data[[i]][-1])
+  if (length(my.data[[i]][-1]) > 0)
+    my.data[[i+1]] = append(my.data[[i+1]], my.data[[i]][-1])
   # Something something portfolio stats something
   
 }
@@ -546,7 +549,10 @@ sum.losses = sum(subset(df.stats, Closed.P.L < 0)$Closed.P.L)
 if (sum.losses == 0) {
   print("Profit factor: inf.")
 } else {
-  print(paste("Profit factor: ", abs(sum.wins / sum.losses), sep=""))
+  print(paste("From: ", cal.begin, " To: ", cal.end,  
+              " OISUF level: ", kOisufThresh))
+  print(paste("N trades: ", total.trades, 
+              " Profit factor: ", abs(sum.wins / sum.losses), sep=""))
 }
 
 

@@ -77,9 +77,21 @@ EAE <- Vectorize(function(x, y) {isTRUE(all.equal(x, y))})
 # Setup date stuff
 library('bizdays')
 library('quantmod')
-cal.begin       = "2014-01-01"
+cal.begin       = "2010-01-01"
 cal.end         = "2019-01-01"
-my.holidays     = c('2014-01-01', '2014-01-20', '2014-02-17',
+my.holidays     = c('2010-01-01', '2010-01-18', '2010-02-15',
+                    '2010-04-02', '2010-05-31', '2010-07-05',
+                    '2010-09-06', '2010-11-25', '2010-12-24',
+                    '2011-01-01', '2011-01-17', '2011-02-21',
+                    '2011-04-22', '2011-05-30', '2011-07-04',
+                    '2011-09-05', '2011-11-24', '2011-12-26',
+                    '2012-01-02', '2012-01-16', '2012-02-20',
+                    '2012-04-06', '2012-05-28', '2012-07-04',
+                    '2012-09-03', '2012-11-22', '2012-12-25',
+                    '2013-01-01', '2013-01-21', '2013-02-18',
+                    '2013-03-29', '2013-05-27', '2013-07-04',
+                    '2013-09-02', '2013-11-28', '2013-12-25',
+                    '2014-01-01', '2014-01-20', '2014-02-17',
                     '2014-04-18', '2014-05-26', '2014-07-03',
                     '2014-09-01', '2014-11-27', '2014-12-25',
                     '2015-01-01', '2015-01-19', '2015-02-16',
@@ -106,11 +118,11 @@ setwd("~/Documents/TradingWithR/backtester/data")
 getSymbols("^RUT", from=cal.begin)
 oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
-kOisufThresh = 20
+kOisufThresh = -200
 
 
 # Choose 1TPX or 1TPS
-global.mode = "1TPS"
+global.mode = "1TPX"
 
 # PickByDelta: return an index of x that has the closest value to y. if there
 #              is a tie, return the first one you come to. This function

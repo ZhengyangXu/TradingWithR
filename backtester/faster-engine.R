@@ -189,29 +189,27 @@ InitialCredit = function(trades) {
 
 # return the strike price of the short call in a single condor
 ShortCall = function(trades) {
-  strike = max(subset(trades, Existing.Posn. < 0)$Strike)
+  strike = min(trades[trades$Call.Put == "C",6])
 }
 
 # return the strike price of the short put in a single condor
 ShortPut = function(trades) {
-  strike = min(subset(trades, Existing.Posn. < 0)$Strike)
+  strike = max(trades[trades$Call.Put == "P",6])
 }
 
-# see if exit conditions are met for a given condor, xts of underlying, date
-ShouldExit = function(my.df, underlying, date) {
-  if (nrow(underlying[as.character(date)]) == 0)
-    stop(paste(as.character(date), "not a trading day"))
+# see if exit conditions are met for a given condor, xts underlying, char date
+ShouldExit = function(my.df, my.highs, my.lows, my.date) {
   if (is.null(my.cal) || !exists("my.cal")) # should check dates too
     stop("global calendar (my.cal) does not exist or is NULL")
   if (FloatingProfit(my.df) >= 0.89 * (-1 * InitialCredit(my.df))) 
     return(TRUE)
   else if (FloatingProfit(my.df) <= 2 * InitialCredit(my.df)) # negative val
     return(TRUE)
-  else if (bizdays(date, as.Date(my.df[1,]$my.exp.date), my.cal) <= 5) 
+  else if (bizdays(as.Date(my.date), as.Date(my.df[1,24]), my.cal) <= 5) 
     return(TRUE)
-  else if (as.numeric(Hi(underlying[as.character(date)])) >= ShortCall(my.df)) 
+  else if (as.numeric(my.highs[my.date]) >= ShortCall(my.df)) 
     return(TRUE)
-  else if (as.numeric(Lo(underlying[as.character(date)])) <= ShortPut(my.df))
+  else if (as.numeric(my.lows[my.date]) <= ShortPut(my.df))
     return(TRUE)
   else 
     return(FALSE)
@@ -223,14 +221,14 @@ ShouldExit = function(my.df, underlying, date) {
 # Don't open a trade in more than one expiration at a time
 # Don't open a trade outside of given trade window (min/max days)
 #   (that's handled by FindCondor function)
-ShouldEnter = function(my.trade.list) {
+ShouldEnter = function(my.trade.list, my.quote) {
   my.open.trades = do.call('rbind', my.trade.list)
   if (is.null(my.open.trades)) {
     return(TRUE)
   } else {
     open.exps = unique(my.open.trades$my.exp.date)
   }
-  would.trade.exp = unique(FindCondor(my.trade.list[[1]])$my.exp.date)
+  would.trade.exp = unique(FindCondor(my.quote)$my.exp.date)
   # check for null before running %in%
   if (is.null(would.trade.exp)) {
     return(FALSE)
@@ -288,6 +286,9 @@ colnames(portfolio.stats) = stats
 my.stats         = rep(list(portfolio.stats), length(my.data))
 names(my.stats)  = names(my.data)
 
+highs = Hi(RUT)
+lows  = Lo(RUT)
+
 total.trades   = 0
 num.inc.quotes = 0
 open.trades    = list()
@@ -296,9 +297,10 @@ closed.trades  = list()
 # 2015-09-08 had fucked up price on SEP 1300 calls, fixed by hand in csv
 # main backtest loop for now, operates on days
 # symbols change names at i=29, delta messed up at i < 88
+profvis({
 for (i in 88:(length(my.data)-1)) { 
   #browser()
-  #if (i > 1) browser()
+  #if (i > 146) browser()
   # steps 1 through 3b, operates on open trades
   if (length(open.trades) > 0) { # don't run w/ 0 trades open
     # create indicies of today's trades to exit
@@ -329,7 +331,7 @@ for (i in 88:(length(my.data)-1)) {
           open.trades[[j]]$mid.price = my.data[[i]][to.update,]$mid.price
         }
         # exit if 90% profit, 200% loss, 5 days till exp, short strike touch
-        if (ShouldExit(open.trades[[j]], RUT, as.Date(names(my.data)[i])))
+        if (ShouldExit(open.trades[[j]], highs, lows, names(my.data)[i]))
           to.exit[j] = TRUE
         # to.exit is now something like c(TRUE, TRUE, TRUE, FALSE, FALSE)
       } else {
@@ -344,9 +346,12 @@ for (i in 88:(length(my.data)-1)) {
       # record profit as closed
       my.stats[[i]][6] = sum(unlist(lapply(open.trades[to.exit], 
                                            FloatingProfit)))
-      # mark as closed
-      #open.trades[to.exit]$Closed     = 'x'
-      #open.trades[to.exit]$Close.Date = names(my.data)[i]
+      # add to trade log
+      for (k in 1:length(open.trades[to.exit])) {
+        closed.trades[[length(closed.trades)+1]] = 
+          TradeSummary(open.trades[to.exit][[k]],
+                       as.Date(names(my.data)[i]))
+      }
       # close trades by setting those indicies to NULL
       open.trades[to.exit] = NULL
     }
@@ -356,7 +361,7 @@ for (i in 88:(length(my.data)-1)) {
   # in 1 TPS backtest, easy, you create new trade every day
   # in 1 TPX backtest, use ShouldEnter()
   # if FindCondor returns NULL, this shouldn't do anything (I think?)
-  if (global.mode == "1TPX" && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && ShouldEnter(open.trades) && !is.null(FindCondor(my.data[[i]])) && nrow(FindCondor(my.data[[i]])) == 4) {
+  if (global.mode == "1TPX" && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && ShouldEnter(open.trades, my.data[[i]]) && !is.null(FindCondor(my.data[[i]])) && nrow(FindCondor(my.data[[i]])) == 4) {
     open.trades[[length(open.trades) + 1]] = FindCondor(my.data[[i]])
     total.trades = total.trades + 1
   } else if (global.mode == "1TPS" && !is.null(FindCondor(my.data[[i]])) && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && nrow(FindCondor(my.data[[i]])) == 4) {
@@ -367,13 +372,10 @@ for (i in 88:(length(my.data)-1)) {
   # Record the floating profit
   my.stats[[i]][7] = sum(unlist(lapply(open.trades, 
                                        FloatingProfit)))
-  # Step 6, copy all of today's still-open trades to tomorrow
-  #if (length(my.data[[i]][-1]) > 0)
-  #  my.data[[i+1]] = append(my.data[[i+1]], my.data[[i]][-1])
   # Something something portfolio stats something
   
 }
-
+})
 # Easier view of stats manually after the fact
 df.stats = data.frame(
             matrix(
@@ -389,6 +391,8 @@ plot(1:nrow(df.stats),
      col='red')
 lines(1:nrow(df.stats), 
       cumsum(df.stats$Closed.P.L))
+
+df.closed.tradesF = do.call('rbind', closed.trades)
 
 # Unit Tests
 # Test ShouldExit does not close brand new trades

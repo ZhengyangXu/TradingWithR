@@ -58,11 +58,11 @@ getSymbols("^RUT", from=cal.begin)
 #oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
 oisuf.raw    = read.csv("../oisuf-rut-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
-kOisufThresh = 20
+kOisufThresh = 0
 
 
 # Choose 1TPX or 1TPS
-global.mode = "1TPX"
+global.mode = "1TPS"
 
 # PickByDelta: return an index of x that has the closest value to y. if there
 #              is a tie, return the first one you come to. This function
@@ -150,14 +150,14 @@ FindCondor = function(my.df, is.list = FALSE) {
   } else {
     # if you have two expirations, pick the minimum for now
     my.df = subset(my.df, cal.dte == min(cal.dte))
-    my.df[PickByDelta(my.df$Delta,   8),]$Existing.Posn. =  1
-    my.df[PickByDelta(my.df$Delta,  11),]$Existing.Posn. = -1
-    my.df[PickByDelta(my.df$Delta,  -8),]$Existing.Posn. =  1
-    my.df[PickByDelta(my.df$Delta, -11),]$Existing.Posn. = -1
+    my.df[PickByDelta(my.df[,16],   8),1] =  1 # col 16 is Delta, 1 is Ex.Pos.
+    my.df[PickByDelta(my.df[,16],  11),1] = -1
+    my.df[PickByDelta(my.df[,16],  -8),1] =  1
+    my.df[PickByDelta(my.df[,16], -11),1] = -1
     # Existing.Posn is NA by default, so this works but is not intuitive:
-    my.open.trades = my.df[!is.na(my.df$Existing.Posn.),]
+    my.open.trades = my.df[!is.na(my.df[,1]),]
     # add new $orig.price column for later
-    my.open.trades$orig.price = my.open.trades$mid.price
+    my.open.trades[,28] = my.open.trades[,27] # orig price = mid price
     return(my.open.trades)
   }
 }
@@ -177,14 +177,13 @@ names(my.data) = as.Date(substr(file.names, 4, 11), "%Y%m%d")
 
 # find floating profit given df of open trades w/ column orig.price
 FloatingProfit = function(trades) {
-  floating.profit = (trades$mid.price - trades$orig.price) * 
-    trades$Existing.Posn.
+  floating.profit = (trades[,27] - trades[,28]) * trades[,1]
   floating.profit = sum(floating.profit)
 }
 
 # find initial credit given df of open trades w/ column orig.price
 InitialCredit = function(trades) {
-  net.credit = sum(trades$Existing.Posn. * trades$orig.price)
+  net.credit = sum(trades[,1] * trades[,28])
 }
 
 # return the strike price of the short call in a single condor
@@ -297,7 +296,7 @@ closed.trades  = list()
 # 2015-09-08 had fucked up price on SEP 1300 calls, fixed by hand in csv
 # main backtest loop for now, operates on days
 # symbols change names at i=29, delta messed up at i < 88
-profvis({
+#profvis({
 for (i in 88:(length(my.data)-1)) { 
   #browser()
   #if (i > 146) browser()
@@ -361,11 +360,12 @@ for (i in 88:(length(my.data)-1)) {
   # in 1 TPS backtest, easy, you create new trade every day
   # in 1 TPX backtest, use ShouldEnter()
   # if FindCondor returns NULL, this shouldn't do anything (I think?)
-  if (global.mode == "1TPX" && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && ShouldEnter(open.trades, my.data[[i]]) && !is.null(FindCondor(my.data[[i]])) && nrow(FindCondor(my.data[[i]])) == 4) {
-    open.trades[[length(open.trades) + 1]] = FindCondor(my.data[[i]])
+  potential.condor = FindCondor(my.data[[i]])
+  if (global.mode == "1TPX" && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && ShouldEnter(open.trades, my.data[[i]]) && !is.null(potential.condor) && nrow(potential.condor) == 4) {
+    open.trades[[length(open.trades) + 1]] = potential.condor
     total.trades = total.trades + 1
-  } else if (global.mode == "1TPS" && !is.null(FindCondor(my.data[[i]])) && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && nrow(FindCondor(my.data[[i]])) == 4) {
-    open.trades[[length(open.trades) + 1]] = FindCondor(my.data[[i]])
+  } else if (global.mode == "1TPS" && !is.null(potential.condor) && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && nrow(potential.condor) == 4) {
+    open.trades[[length(open.trades) + 1]] = potential.condor
     total.trades = total.trades + 1
   }
   
@@ -375,7 +375,7 @@ for (i in 88:(length(my.data)-1)) {
   # Something something portfolio stats something
   
 }
-})
+#}) # end profvis
 # Easier view of stats manually after the fact
 df.stats = data.frame(
             matrix(
@@ -398,24 +398,24 @@ df.closed.tradesF = do.call('rbind', closed.trades)
 # Test ShouldExit does not close brand new trades
 TestNoNewExit = function() {
   my.df = read.csv("sample-trade")
-  return(ShouldExit(my.df, RUT, as.Date("2015-01-02")) == FALSE)
+  return(ShouldExit(my.df, highs, lows, "2015-01-02") == FALSE)
 }
 # Test ShouldExit's profit-based exit
 TestProfitExit = function() {
   my.df = read.csv("sample-trade")
   my.df$mid.price = c(6, 1, 1, 4)
-  return(ShouldExit(my.df, RUT, as.Date("2015-01-02")) == TRUE)
+  return(ShouldExit(my.df, highs, lows, "2015-01-02") == TRUE)
 }
 # Test ShouldExit's loss-based exit
 TestLossExit = function() {
   my.df = read.csv("sample-trade")
   my.df$mid.price = c(1, 10, 10, 1)
-  return(ShouldExit(my.df, RUT, as.Date("2015-01-02")) == TRUE)
+  return(ShouldExit(my.df, highs, lows, "2015-01-02") == TRUE)
 }
 # Test ShouldExit's time-based exit doesn't take you out early
 TestEarlyExit = function() {
   my.df = read.csv("sample-trade")
-  return(ShouldExit(my.df, RUT, as.Date("2016-01-04")) == FALSE)
+  return(ShouldExit(my.df, highs, lows, "2015-01-04") == FALSE)
 }
 # Test ShouldExit's time-based exit doesn't take you out late
 TestLateExit = function() {
@@ -436,21 +436,21 @@ TestShortCallExit = function() {
 TestShortPutExit = function() {
   my.df = read.csv("sample-trade")
   my.date  = "2016-02-01" # this date already is lower than short put
-  return(ShouldExit(my.df, RUT, as.Date(my.date)) == TRUE)
+  return(ShouldExit(my.df, highs, lows, my.date) == TRUE)
 }
 
-unit.tests = c(TestEarlyExit(), 
-               TestLateExit(), 
-               TestLossExit(), 
-               TestNoNewExit(), 
-               TestProfitExit(), 
-               TestShortCallExit(), 
-               TestShortPutExit())
-if (all(unit.tests)) {
-  print("Tests pass")
-} else{
-  print(paste("....-----++++[Tests failed: ", toString(unit.tests)))
-}
+# unit.tests = c(TestEarlyExit(), 
+#                TestLateExit(), 
+#                TestLossExit(), 
+#                TestNoNewExit(), 
+#                TestProfitExit(), 
+#                TestShortCallExit(), 
+#                TestShortPutExit())
+# if (all(unit.tests)) {
+#   print("Tests pass")
+# } else{
+#   print(paste("....-----++++[Tests failed: ", toString(unit.tests)))
+# }
 
 
 # Profit factor

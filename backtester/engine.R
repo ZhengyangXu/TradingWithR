@@ -119,11 +119,11 @@ getSymbols("^RUT", from=cal.begin)
 #oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
 oisuf.raw    = read.csv("../oisuf-rut-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
-kOisufThresh = 20
+kOisufThresh = 0
 
 
 # Choose 1TPX or 1TPS
-global.mode = "1TPX"
+global.mode = "1TPS"
 
 # PickByDelta: return an index of x that has the closest value to y. if there
 #              is a tie, return the first one you come to. This function
@@ -248,25 +248,8 @@ for (i in 1:length(file.names)) {
                       )
 }
 
+# Make it so you can reference data by date
 names(my.data) = as.Date(substr(file.names, 4, 11), "%Y%m%d")
-
-# Steps to making a trade:
-#   1. Copy trades to tomorrow's [[2]]
-#   2. In tomorrow's [[2]], insert a new column orig.price with value
-#      equal to mid.price (the actual opening trade value)
-#   3. In tomorrow's [[2]], set mid.price equal to tomorrow's [[1]] mid.price
-#      (the actual value of the position tomorrow)
-
-# 1
-#my.data[['2017-03-07']][[2]] = FindCondor(my.data[['2017-03-06']][[1]])
-# 2
-#my.data[['2017-03-07']][[2]]$orig.price = my.data[['2017-03-07']][[2]]$mid.price
-# 3, using cool %in% operator
-#my.data[['2017-03-07']][[2]]$mid.price = 
-#  my.data[['2017-03-07']][[1]][
-#    my.data[['2017-03-07']][[1]]$Symbol %in% 
-#    my.data[['2017-03-07']][[2]]$Symbol,
-#  ]$mid.price
 
 # find floating profit given df of open trades w/ column orig.price
 FloatingProfit = function(trades) {
@@ -383,7 +366,7 @@ names(my.stats)  = names(my.data)
 
 total.trades     = 0
 num.inc.quotes   = 0
-my.closed.trades = list()
+closed.trades = list()
 
 # 2015-09-08 had fucked up price on SEP 1300 calls, fixed by hand in csv
 # main backtest loop for now, operates on days
@@ -435,6 +418,12 @@ for (i in 1:(length(my.data)-1)) {
       # record profit as closed
       my.stats[[i]][6] = sum(unlist(lapply(my.data[[i]][to.exit], 
                                            FloatingProfit)))
+      # add to trade log
+      for (k in 1:length(my.data[[i]][to.exit])) {
+        closed.trades[[length(closed.trades)+1]] = 
+          TradeSummary(my.data[[i]][to.exit][[k]],
+                       as.Date(names(my.data)[i]))
+      }
       # close trades by setting those indicies to NULL
       my.data[[i]][to.exit] = NULL
     }
@@ -483,6 +472,8 @@ plot(1:nrow(df.stats),
      col='red')
 lines(1:nrow(df.stats), 
       cumsum(df.stats$Closed.P.L))
+
+df.closed.trades = do.call('rbind', closed.trades)
 
 # Unit Tests
 # Test ShouldExit does not close brand new trades

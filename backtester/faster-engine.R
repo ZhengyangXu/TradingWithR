@@ -58,11 +58,11 @@ getSymbols("^RUT", from=cal.begin)
 #oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
 oisuf.raw    = read.csv("../oisuf-rut-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
-kOisufThresh = 0
+kOisufThresh = 20
 
 
 # Choose 1TPX or 1TPS
-global.mode = "1TPS"
+global.mode = "1TPX"
 
 # PickByDelta: return an index of x that has the closest value to y. if there
 #              is a tie, return the first one you come to. This function
@@ -214,6 +214,24 @@ ShouldExit = function(my.df, my.highs, my.lows, my.date) {
     return(FALSE)
 }
 
+# a copy of ShouldExit to give detail on the exit reason
+ExitReason = function(my.df, my.highs, my.lows, my.date) {
+  if (is.null(my.cal) || !exists("my.cal")) # should check dates too
+    stop("global calendar (my.cal) does not exist or is NULL")
+  if (FloatingProfit(my.df) >= 0.89 * (-1 * InitialCredit(my.df))) 
+    return(paste("1: 90% Profit hit"))
+  else if (FloatingProfit(my.df) <= 2 * InitialCredit(my.df)) # negative val
+    return(paste("2: 200% Loss hit"))
+  else if (bizdays(as.Date(my.date), as.Date(my.df[1,24]), my.cal) <= 5) 
+    return(paste("3: 5 days until expiration"))
+  else if (as.numeric(my.highs[my.date]) >= ShortCall(my.df)) 
+    return(paste("4: Short call touched"))
+  else if (as.numeric(my.lows[my.date]) <= ShortPut(my.df))
+    return(paste("5: Short put touched"))
+  else 
+    return(paste("-1: Other"))
+}
+
 # see if entry conditions are met for a given day's list 
 # idea here will be to check if you have an open trade on that quote day
 # for the given condor you'd get out of the quote from that day
@@ -272,6 +290,7 @@ TradeSummary = function(my.df, my.date) {
 #   6.  Copy all open trades to tomorrow
 #   7.  Log portfolio stats to today's portfolio stat object
 
+#for (kOisufThresh in ((0:4)*20)) { # OISUF threshold loop
 
 # Create a stats object for every day, then rbind them all together later
 # after you've completed the backtest to graph $ and stuff
@@ -299,7 +318,7 @@ closed.trades  = list()
 #profvis({
 for (i in 88:(length(my.data)-1)) { 
   #browser()
-  #if (i > 146) browser()
+  #if (i > 1150) browser()
   # steps 1 through 3b, operates on open trades
   if (length(open.trades) > 0) { # don't run w/ 0 trades open
     # create indicies of today's trades to exit
@@ -347,9 +366,17 @@ for (i in 88:(length(my.data)-1)) {
                                            FloatingProfit)))
       # add to trade log
       for (k in 1:length(open.trades[to.exit])) {
+        reason = ExitReason(open.trades[to.exit][[k]], 
+                            highs, 
+                            lows, 
+                            names(my.data)[i])
+        entry.date = open.trades[to.exit][[k]][1,23]
+        oisuf.at.entry = as.numeric(oisuf.values[entry.date,])
         closed.trades[[length(closed.trades)+1]] = 
-          TradeSummary(open.trades[to.exit][[k]],
-                       as.Date(names(my.data)[i]))
+          cbind(oisuf.at.entry,
+                TradeSummary(open.trades[to.exit][[k]],
+                             as.Date(names(my.data)[i])),
+                reason)
       }
       # close trades by setting those indicies to NULL
       open.trades[to.exit] = NULL
@@ -392,7 +419,7 @@ plot(1:nrow(df.stats),
 lines(1:nrow(df.stats), 
       cumsum(df.stats$Closed.P.L))
 
-df.closed.tradesF = do.call('rbind', closed.trades)
+df.closed.trades = do.call('rbind', closed.trades)
 
 # Unit Tests
 # Test ShouldExit does not close brand new trades
@@ -465,7 +492,7 @@ if (sum.losses == 0) {
               " Profit factor: ", abs(sum.wins / sum.losses), sep=""))
 }
 
-
+#} # OISUF threshold loop
 
 
 

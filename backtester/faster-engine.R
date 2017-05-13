@@ -61,11 +61,11 @@ getSymbols("^RUT", from=cal.begin)
 #oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
 oisuf.raw    = read.csv("../oisuf-rut-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
-kOisufThresh = 0
+kOisufThresh = -200
 
 
 # Choose 1TPX or 1TPS
-global.mode = "1TPX"
+global.mode = "1TPS"
 
 # PickByDelta: return an index of x that has the closest value to y. if there
 #              is a tie, return the first one you come to. This function
@@ -213,6 +213,8 @@ ShouldExit = function(my.df, my.highs, my.lows, my.date) {
     return(TRUE)
   else if (as.numeric(my.lows[my.date]) <= ShortPut(my.df))
     return(TRUE)
+  else if (abs(sum(my.df$Delta) / sum(my.df$Theta)) > 0.5)
+    return(TRUE)
   else 
     return(FALSE)
 }
@@ -231,6 +233,8 @@ ExitReason = function(my.df, my.highs, my.lows, my.date) {
     return(paste("4: Short call touched"))
   else if (as.numeric(my.lows[my.date]) <= ShortPut(my.df))
     return(paste("5: Short put touched"))
+  else if (abs(sum(my.df$Delta) / sum(my.df$Theta)) > 0.5)
+    return(paste("6: DTR > 0.5"))
   else 
     return(paste("-1: Other"))
 }
@@ -502,6 +506,7 @@ if (sum.losses == 0) {
               " OISUF level: ", kOisufThresh))
   print(paste("N trades: ", total.trades, 
               " Profit factor: ", abs(sum.wins / sum.losses), sep=""))
+  print(data.frame(summary(df.closed.trades$reason)))
 }
 
 #} # OISUF threshold loop

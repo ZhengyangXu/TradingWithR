@@ -269,7 +269,8 @@ TradeSummary = function(my.df, my.date) {
                     init.cred     = InitialCredit(my.df),
                     float.profit  = FloatingProfit(my.df),
                     cal.days.open = as.numeric(my.date - my.df[1,]$my.iso.date),
-                    close.date    = my.date)
+                    close.date    = my.date,
+                    dtrr          = abs(sum(my.df$Delta) / sum(my.df$Theta)))
   return(as.data.frame(trade.data))
 }
 
@@ -343,6 +344,11 @@ for (i in 88:(length(my.data)-1)) {
                                         Symbol %in% symbols.to.update)
           # TODO how do you know what order this is in?
           tmp.update$mid.price = my.data[[i]][to.update,]$mid.price
+          tmp.update$Delta     = my.data[[i]][to.update,]$Delta
+          tmp.update$Gamma     = my.data[[i]][to.update,]$Gamma
+          tmp.update$Vega      = my.data[[i]][to.update,]$Vega
+          tmp.update$Theta     = my.data[[i]][to.update,]$Theta
+          tmp.update$Rho       = my.data[[i]][to.update,]$Rho
           open.trades[[j]]     = rbind(tmp.update, 
                                        subset(open.trades[[j]], 
                                               !(Symbol %in% symbols.to.update)))
@@ -411,10 +417,11 @@ for (i in 88:(length(my.data)-1)) {
 # Easier view of stats manually after the fact
 df.stats = data.frame(
             matrix(
-              unlist(my.stats), 
-              nrow=length(my.stats), 
+              unlist(my.stats[-length(my.stats)]), 
+              nrow=length(my.stats)-1, 
               byrow=T, 
-              dimnames=list(names(my.stats), colnames(portfolio.stats))))
+              dimnames=list(names(my.stats)[-length(my.stats)], 
+                            colnames(portfolio.stats))))
 
 # Plot the floating and closed profit
 plot(1:nrow(df.stats), 

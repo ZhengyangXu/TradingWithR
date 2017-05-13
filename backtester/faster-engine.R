@@ -7,8 +7,11 @@
 #       move it to closed.trades. Floating profit is sum of open trades / day.
 #       Closed profit is sum of closed trades on that day.
 
-# use a zoo object for time, and first column is the list of quotes and
-# second column is list of stats??
+# v0.3 requirements:
+#   1.  Trade log to compare notes with people
+#   2.  Keep track of greeks of the position as well to do greek-based exits
+#   3.  Do #2 without slowing it down too much
+#   4.  Experiment with data.table
 
 # Use EAE() instead of == on floating point numbers
 EAE <- Vectorize(function(x, y) {isTRUE(all.equal(x, y))})
@@ -58,7 +61,7 @@ getSymbols("^RUT", from=cal.begin)
 #oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
 oisuf.raw    = read.csv("../oisuf-rut-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
-kOisufThresh = 20
+kOisufThresh = 0
 
 
 # Choose 1TPX or 1TPS
@@ -316,6 +319,7 @@ closed.trades  = list()
 # main backtest loop for now, operates on days
 # symbols change names at i=29, delta messed up at i < 88
 #profvis({
+system.time(
 for (i in 88:(length(my.data)-1)) { 
   #browser()
   #if (i > 1150) browser()
@@ -402,6 +406,7 @@ for (i in 88:(length(my.data)-1)) {
   # Something something portfolio stats something
   
 }
+)
 #}) # end profvis
 # Easier view of stats manually after the fact
 df.stats = data.frame(

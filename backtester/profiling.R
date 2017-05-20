@@ -14,9 +14,10 @@ profvis({
   print(names(my.data))
 })
 
+
 profvis({
   for (i in 1:1000) {
-  if (nrow(underlying[my.date]) == 0)
+  if (nrow(RUT[my.date]) == 0)
     stop(paste(my.date, "not a trading day"))
   if (is.null(my.cal) || !exists("my.cal")) # should check dates too
     stop("global calendar (my.cal) does not exist or is NULL")

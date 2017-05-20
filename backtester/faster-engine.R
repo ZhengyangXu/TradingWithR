@@ -66,7 +66,7 @@ getSymbols("RUT", src="csv", dir="..")
 #oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
 oisuf.raw    = read.csv("../oisuf-rut-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
-kOisufThresh = -200
+kOisufThresh = 0
 
 
 # Choose 1TPX or 1TPS
@@ -152,12 +152,17 @@ FindCondor = function(my.df, is.list = FALSE) {
   my.df = my.df[!grepl("D\\d{1,2}$", my.df$Symbol, perl = TRUE),]
   # clean up to only include possible candidates
   my.df = subset(my.df, cal.dte > 49 & cal.dte < 76)
+  # If you just try to grab multiple expirations, it pulls from both exps
+  #my.df = subset(my.df, cal.dte > 24 & cal.dte < 76)
   # if you have no expirations (a few days like this), return NULL
   if (nrow(my.df) == 0) {
     return(NULL)
   } else {
     # if you have two expirations, pick the minimum for now
     my.df = subset(my.df, cal.dte == min(cal.dte))
+    # Are returns different if you pick the max?
+    #my.df = subset(my.df, cal.dte == max(cal.dte))
+    # Assign trades
     my.df[PickByDelta(my.df[,16],   8),1] =  1 # col 16 is Delta, 1 is Ex.Pos.
     my.df[PickByDelta(my.df[,16],  11),1] = -1
     my.df[PickByDelta(my.df[,16],  -8),1] =  1

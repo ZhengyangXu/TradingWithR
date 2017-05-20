@@ -1,17 +1,21 @@
 # Options Backtester
-# v0.2 requirements:
-#    0. make it faster. Data load for 7 years is ~30 seconds. Backtest 1TPS
-#       in same amount of time. Where is the bottleneck? Clearly the copy.
-#       Turn O(n) for trade updates to O(1) and / or don't copy anything.
-#    1. Make an open.trades object that you update every day. When it's closed,
-#       move it to closed.trades. Floating profit is sum of open trades / day.
-#       Closed profit is sum of closed trades on that day.
-
 # v0.3 requirements:
-#   1.  Trade log to compare notes with people
-#   2.  Keep track of greeks of the position as well to do greek-based exits
-#   3.  Do #2 without slowing it down too much
-#   4.  Experiment with data.table
+#   1.  DONE Trade log to compare notes with people
+#   2.  DONE Keep track of greeks of the position as well to do greek-based exits
+#   3.  DONE Do #2 without slowing it down too much
+#   4.  Experiment with data.table, especially read/write backdata
+#   5.  Start doing the 60-40-20
+#       a.  FindBWB
+#       b.  Wait -- do you just do this as a whole new file? less juggling?
+#   6.  Get the 2 expiration things working
+#       a.  maybe just check nrow() of returned stuff? 4? cool. 8? split it.
+
+# Thoughts on input data validation 
+#   1.  Check for duplicates
+#   2.  Check for what's expected (did you read in july quotes in january?)
+#   3.  Check for too many things across total input and each month
+#   4.  Check for too few things across total input and each month
+
 
 # Use EAE() instead of == on floating point numbers
 EAE <- Vectorize(function(x, y) {isTRUE(all.equal(x, y))})
@@ -57,7 +61,8 @@ my.cal = create.calendar(holidays = my.holidays,
                          weekdays=c("saturday", "sunday"),
                          name="my.cal")
 setwd("~/Documents/TradingWithR/backtester/data")
-getSymbols("^RUT", from=cal.begin)
+#getSymbols("^RUT", from=cal.begin) # RIP Yahoo Finance API
+getSymbols("RUT", src="csv", dir="..")
 #oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
 oisuf.raw    = read.csv("../oisuf-rut-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
@@ -65,7 +70,7 @@ kOisufThresh = -200
 
 
 # Choose 1TPX or 1TPS
-global.mode = "1TPS"
+global.mode = "1TPX"
 
 # PickByDelta: return an index of x that has the closest value to y. if there
 #              is a tie, return the first one you come to. This function
@@ -157,6 +162,41 @@ FindCondor = function(my.df, is.list = FALSE) {
     my.df[PickByDelta(my.df[,16],  11),1] = -1
     my.df[PickByDelta(my.df[,16],  -8),1] =  1
     my.df[PickByDelta(my.df[,16], -11),1] = -1
+    # Existing.Posn is NA by default, so this works but is not intuitive:
+    my.open.trades = my.df[!is.na(my.df[,1]),]
+    # add new $orig.price column for later
+    my.open.trades[,28] = my.open.trades[,27] # orig price = mid price
+    return(my.open.trades)
+  }
+}
+
+# FindBWB: find the strikes of 60-40-20 trade by delta: long 60/20 short 2x 40
+# inputs:
+#   my.df, a data frame consisting of a Delta column and Existing.Posn. column
+#   is.list, a boolean of whether or not the input is actually a list
+# outputs:
+#   a data frame consisting of only the trades to take to establish the BWB
+#   if there is more than one available expiration, take the min for now
+#   TODO: proper multi-expiration handling
+FindBWB = function(my.df, is.list = FALSE) {
+  if (is.list) {
+    my.df = my.df[[1]]
+  }
+  # clean up to only include traditional monthlies
+  # (should be checking this in data export as well)
+  my.df = my.df[!grepl("D\\d{1,2}$", my.df$Symbol, perl = TRUE),]
+  # clean up to only include possible candidates
+  my.df = subset(my.df, cal.dte > 59 & cal.dte < 91)
+  # if you have no expirations (a few days like this), return NULL
+  if (nrow(my.df) == 0) {
+    return(NULL)
+  } else {
+    # if you have two expirations, pick the minimum for now
+    my.df = subset(my.df, cal.dte == min(cal.dte))
+    # deltas are negative, trading in puts only
+    my.df[PickByDelta(my.df[,16],  -60),1] =  1 # col 16 is Delta, 1 is Ex.Pos.
+    my.df[PickByDelta(my.df[,16],  -40),1] = -2
+    my.df[PickByDelta(my.df[,16],  -20),1] =  1
     # Existing.Posn is NA by default, so this works but is not intuitive:
     my.open.trades = my.df[!is.na(my.df[,1]),]
     # add new $orig.price column for later
@@ -324,10 +364,10 @@ closed.trades  = list()
 # main backtest loop for now, operates on days
 # symbols change names at i=29, delta messed up at i < 88
 #profvis({
-system.time(
+#system.time(
 for (i in 88:(length(my.data)-1)) { 
   #browser()
-  #if (i > 1150) browser()
+  #if (i > 1154) browser()
   # steps 1 through 3b, operates on open trades
   if (length(open.trades) > 0) { # don't run w/ 0 trades open
     # create indicies of today's trades to exit
@@ -361,6 +401,11 @@ for (i in 88:(length(my.data)-1)) {
         } else {
           # TODO how do you know what order this is in?
           open.trades[[j]]$mid.price = my.data[[i]][to.update,]$mid.price
+          open.trades[[j]]$Delta     = my.data[[i]][to.update,]$Delta
+          open.trades[[j]]$Gamma     = my.data[[i]][to.update,]$Gamma
+          open.trades[[j]]$Vega      = my.data[[i]][to.update,]$Vega
+          open.trades[[j]]$Theta     = my.data[[i]][to.update,]$Theta
+          open.trades[[j]]$Rho       = my.data[[i]][to.update,]$Rho
         }
         # exit if 90% profit, 200% loss, 5 days till exp, short strike touch
         if (ShouldExit(open.trades[[j]], highs, lows, names(my.data)[i]))
@@ -416,7 +461,7 @@ for (i in 88:(length(my.data)-1)) {
   # Something something portfolio stats something
   
 }
-)
+#) # end system.time
 #}) # end profvis
 # Easier view of stats manually after the fact
 df.stats = data.frame(
@@ -512,8 +557,9 @@ if (sum.losses == 0) {
 #} # OISUF threshold loop
 
 
-
-
+x.stats = as.xts(df.stats)
+perf = 100 + cumsum(x.stats$Closed.P.L) + x.stats$Open.P.L
+charts.PerformanceSummary(ROC(perf))
 
 
 

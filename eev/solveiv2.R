@@ -75,6 +75,22 @@ uiMinA    = 0.011
 uiMaxParm = 6     # 600%
 uiMaxSkew = 1
 uiOptMult = 100
+
+underly  <- 72.05
+riskfr   <- 0.0025
+dividend <- 0
+
+analysis_date   = "2015-07-30"
+first_u_date    = "2015-07-31"
+second_u_date   = "2015-07-31"
+next_earn_date  = "2015-07-30"
+next_ext_date   = "2015-08-07"
+cal_begin       = "2014-01-01"
+cal_end         = "2019-01-01"
+datecode        = "20150730"
+timecode        = "1430"
+ticker          = "ea"
+
 uiHolidays = c('2014-01-01', '2014-01-20', '2014-02-17',
              '2014-04-18', '2014-05-26', '2014-07-03',
              '2014-09-01', '2014-11-27', '2014-12-25',
@@ -92,6 +108,18 @@ uiHolidays = c('2014-01-01', '2014-01-20', '2014-02-17',
              '2018-09-03', '2018-11-22', '2018-12-25',
              '2019-01-01')
 
+options_file = paste(ticker, datecode, timecode, '.csv',
+                     sep='')
+stock_file   = paste(ticker, '.asc', sep='')
+mydata       = read.csv(options_file)
+myivprice    = read.csv(stock_file)
+myivprice    = myivprice[!is.na(myivprice$IV30),] # no NA iv
+underly      = mydata[1,]$Last
+mydata       = mydata[-1,]                        # top row is underlying
+
+# Set up only to use those strikes with bids/asks, look for Date
+matrixComplete = mydata[!is.na(mydata$Date),]
+
 # Optimizer parameters are only constants because they directly feed back into 
 # formulas in Excel which have the objective function in it. So what's the obj
 # function this time around? Is it just the output of the VWE Sq which then 
@@ -101,6 +129,98 @@ uiHolidays = c('2014-01-01', '2014-01-20', '2014-02-17',
 optLower = numeric(11) # TODO set defaults here
 optUpper = numeric(11) # TODO set defaults here
 toOpt    = numeric(11) # TODO randomize these between upper/lower defaults?
+
+# oh god these functions are from the internet
+# but they make values match more or less Brian's sheet (mean(err) ~ 1e-5)
+NewtonSolve <- function(x, Fprime, tol=1.e-7, maxsteps=25, verbose=FALSE){
+  
+  res <- Fprime(x)
+  if( abs(res$Fx)<tol ){
+    ## ... already got a root with 0 Newton steps
+    res$conv <- 0
+    return(res)
+  }
+  
+  if(verbose)
+    cat("Newton\n Step  x            Fx         DFx        NewtonCorrection\n")
+  
+  for(step in 1:maxsteps){
+    NewtonCorrection <- res$Fx / res$DFx
+    
+    ## update current guess for root
+    x   <- x - NewtonCorrection
+    
+    ## evaluate target function and its derivative
+    res <- Fprime(x)
+    
+    if(verbose)
+      cat(sprintf("%3d   % .3e   % .1e   % .1e   % .1e\n", step, x, res$Fx, res$Fx, NewtonCorrection))
+    
+    if( abs(res$Fx)<tol ){
+      ## got a root with "step" Newton steps
+      res$conv <- step
+      return(res)
+    }
+  }
+  ## no convergence
+  res$conv <- -1
+  res
+}
+
+# another from the internet with 'type' added by me
+ImpliedBSVol <- function(type, volGuess, Spot, Strike,
+                         riskfree, dividend, TTM,
+                         Cprice, verbose=FALSE){
+  
+  ## Evaluates target function whose root is to be found, as well as derivative
+  ## wrt sigma of target function.
+  ## Target function is the difference between the price obtained from
+  ## BS formula evaluated at vol sigma ("BSprice"),
+  ## minus actual call price to be inverted ("Cprice").
+  BSprimeCalls <- function(sigma){
+    sTTM    <- sqrt(TTM)
+    sigmaT  <- sigma*sTTM
+    d1      <- (log(Spot/Strike) + (riskfr - dividend + sigma^2/2)*TTM)/sigmaT
+    d2      <- d1 - sigmaT
+    Strikerf<- Strike*exp(-riskfree*TTM)
+    Spotdivd<- Spot  *exp(-dividend*TTM)
+    # calls
+    BSprice <- pnorm(d1)*Spotdivd - pnorm(d2)*Strikerf
+    d2prime <- d1/sigma
+    d1prime <- sTTM + d2prime
+    BSpriceprime <- d1prime*dnorm(d1)*Spotdivd - d2prime*dnorm(d2)*Strikerf
+    list(x  =sigma,
+         Fx =BSprice-Cprice,
+         DFx=BSpriceprime)
+  }
+  
+  BSprimePuts <- function(sigma){
+    sTTM    <- sqrt(TTM)
+    sigmaT  <- sigma*sTTM
+    d1      <- (log(Spot/Strike) + (riskfr - dividend + sigma^2/2)*TTM)/sigmaT
+    d2      <- d1 - sigmaT
+    Strikerf<- Strike*exp(-riskfree*TTM)
+    Spotdivd<- Spot  *exp(-dividend*TTM)
+    # puts
+    BSprice <- pnorm(-d2)*Strikerf - pnorm(-d1)*Spotdivd
+    d2prime <- d1/sigma
+    d1prime <- sTTM + d2prime
+    BSpriceprime <- d1prime*dnorm(d1)*Spotdivd - d2prime*dnorm(d2)*Strikerf
+    list(x  =sigma,
+         Fx =BSprice-Cprice,
+         DFx=BSpriceprime)
+  }
+  if (type == "call") {
+    res <- NewtonSolve(volGuess,BSprimeCalls,verbose=verbose)
+    res$x
+  } else if (type == "put") {
+    res <- NewtonSolve(volGuess,BSprimePuts,verbose=verbose)
+    res$x
+  }
+  else {
+    stop("neither put nor call specified")
+  }
+}
 
 # Some functions for easy stuff above
 fSlopeParm = function(vsa, vsb, t) {
@@ -168,8 +288,8 @@ fvwErr = function(normIV, estNormIV, vega, ivNVMult) {
 
 # Set up calendar
 mycal = Calendar(holidays = uiHolidays, 
-                 start.date = "2014-01-01", 
-                 end.date="2019-01-01", 
+                 start.date = cal_begin, 
+                 end.date= cal_end, 
                  weekdays=c("saturday", "sunday"))
 # sample bizdays call: bizdays("2014-01-02", "2014-01-21", mycal) = 12
 
@@ -211,20 +331,76 @@ mycal = Calendar(holidays = uiHolidays,
 #   7. Calculate the error between values in #4 and #6.
 #      (optimizer is minimizing this)
 # 
+matrixComplete$expISO = as.Date(as.character(matrixComplete$Exp.Date), 
+                                "%y%m%d")
+
+# Calculate total days
+matrixComplete$ND     = bizdays(analysis_date, 
+                                matrixComplete$expISO, 
+                                mycal)
+
+# ur in R use ur vectorz 4 date maffs
+matrixComplete$ED     = 1+floor(bizdays(next_earn_date, 
+                                        matrixComplete$expISO,
+                                        mycal) / 63)
+matrixComplete$BD     = matrixComplete$ND - matrixComplete$ED
+
+# No options at expiration
+matrixComplete        = matrixComplete[matrixComplete$ND != 1,]
+
+# No options without quotes
+matrixComplete$avgp   = (matrixComplete$Bid + matrixComplete$Asked) / 2
+matrixComplete        = matrixComplete[!is.na(matrixComplete$avgp),]
+
+# Set up some other helper columns / values
+matrixComplete$type[matrixComplete$Call.Put == "C"] = "call"
+matrixComplete$type[matrixComplete$Call.Put == "P"] = "put"
+
+# Calculate IV using BSOPM 
+avg.iv = mean(matrixComplete$Mid.IV[!is.na(matrixComplete$Mid.IV)])
+for (i in 1:length(matrixComplete$Strike.Price)) {
+  matrixComplete$CalcIV[i] = 
+    ImpliedBSVol(matrixComplete$type[i],
+                 avg.iv,
+                 underly,
+                 matrixComplete$Strike.Price[i],
+                 riskfr,
+                 dividend,
+                 matrixComplete$ND[i]/252,
+                 matrixComplete$avgp[i],
+                 verbose=FALSE)
+  #     AmericanOptionImpliedVolatility(matrixComplete$type[i], 
+  #                                     matrixComplete$avgp[i],
+  #                                     underly,
+  #                                     matrixComplete$Strike.Price[i],
+  #                                     dividend, 
+  #                                     riskfr, 
+  #                                     matrixComplete$ND[i]/252,
+  #                                     avg.iv)
+}
+
+# try out one of them there functions
+maxOVVSkew = 1
+matrixComplete$OVVSkew = fOVVSkew(matrixComplete$Strike.Price,
+                                  underly,
+                                  dividend,
+                                  matrixComplete$ND/252,
+                                  maxOVVSkew)
 
 # Some rough testing using some shared setup from <RQL examples.R>
-toOpt[11] = 1.1519
+toOpt[11] = 1.1439
 matrixComplete$NormIV = fNormIV(matrixComplete$ND, 
                                 matrixComplete$ED, 
                                 matrixComplete$BD,
                                 toOpt[11],
                                 matrixComplete$CalcIV)
-
-toOpt[7:10] = c(-0.0661, -0.0415, 0.0777, -0.0018)
+# Ac, Bc, Cc, Ap, Bp, Cp, VSA, VSB, VCA, VCB, IEV
+# [1] [2] [3] [4] [5] [6] [7]  [8]  [9]  [10]  [11]
+toOpt[7:10] = c(-0.0613, -0.0836, 0.0215, 0.6534)
 matrixComplete$slope = fSlopeParm(toOpt[7], toOpt[8], matrixComplete$ND/252)
 matrixComplete$curve = fSlopeParm(toOpt[9], toOpt[10], matrixComplete$ND/252)
 
-toOpt[1:6] = c(0.2693, -3.0317, -0.0097, 0.2580, 0.0284, 2.8638)
+toOpt[1:6] = c(0.2738, -3.0751, -0.0076, 0.2691, -0.1371, -0.0684)
 matrixComplete$atmniv[matrixComplete$type == "call"] = fATMNIV(toOpt[1], 
                                                                toOpt[2], 
                                                                toOpt[3], 
@@ -255,3 +431,9 @@ matrixComplete$vwErr2 = matrixComplete$vwErr^2
 
 print(fpriceErr(matrixComplete$vwErr2))
 
+sum(matrixComplete$vwErr2)  #  4.049805
+mean(matrixComplete$vwErr2) #  0.01488899
+max(matrixComplete$nivErr)  #  0.1705075
+min(matrixComplete$nivErr)  # -0.2535272
+max(matrixComplete$vwErr)   #  0.2759597
+min(matrixComplete$vwErr)   # -0.6587683

@@ -66,7 +66,7 @@ getSymbols("RUT", src="csv", dir="..")
 #oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
 oisuf.raw    = read.csv("../oisuf-rut-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
-kOisufThresh = 0
+kOisufThresh = -200
 
 
 # Choose 1TPX or 1TPS
@@ -132,49 +132,6 @@ EnrichOptionsQuotes = function(my.df) {
   return(cbind(my.df, my.iso.date, my.exp.date, biz.dte, cal.dte, mid.price))
 }
 
-# FindCondor: find the strikes of iron condor legs by delta: short 11 long 8
-# inputs:
-#   my.df, a data frame consisting of a Delta column and Existing.Posn. column
-#   is.list, a boolean of whether or not the input is actually a list
-# outputs:
-#   a data frame consisting of only the trades to take to establish the condor
-#   if there is more than one available expiration, take the min for now
-#   TODO: proper multi-expiration handling
-# example:
-#   call FindCondor with lapply: foo = lapply(my.data, FindCondor, TRUE)
-#   call FindCondor with normal data frame: foo = FindCondor(my.df)
-FindCondor = function(my.df, is.list = FALSE) {
-  if (is.list) {
-    my.df = my.df[[1]]
-  }
-  # clean up to only include traditional monthlies
-  # (should be checking this in data export as well)
-  my.df = my.df[!grepl("D\\d{1,2}$", my.df$Symbol, perl = TRUE),]
-  # clean up to only include possible candidates
-  my.df = subset(my.df, cal.dte > 49 & cal.dte < 76)
-  # If you just try to grab multiple expirations, it pulls from both exps
-  #my.df = subset(my.df, cal.dte > 24 & cal.dte < 76)
-  # if you have no expirations (a few days like this), return NULL
-  if (nrow(my.df) == 0) {
-    return(NULL)
-  } else {
-    # if you have two expirations, pick the minimum for now
-    my.df = subset(my.df, cal.dte == min(cal.dte))
-    # Are returns different if you pick the max?
-    #my.df = subset(my.df, cal.dte == max(cal.dte))
-    # Assign trades
-    my.df[PickByDelta(my.df[,16],   8),1] =  1 # col 16 is Delta, 1 is Ex.Pos.
-    my.df[PickByDelta(my.df[,16],  11),1] = -1
-    my.df[PickByDelta(my.df[,16],  -8),1] =  1
-    my.df[PickByDelta(my.df[,16], -11),1] = -1
-    # Existing.Posn is NA by default, so this works but is not intuitive:
-    my.open.trades = my.df[!is.na(my.df[,1]),]
-    # add new $orig.price column for later
-    my.open.trades[,28] = my.open.trades[,27] # orig price = mid price
-    return(my.open.trades)
-  }
-}
-
 # FindBWB: find the strikes of 60-40-20 trade by delta: long 60/20 short 2x 40
 # inputs:
 #   my.df, a data frame consisting of a Delta column and Existing.Posn. column
@@ -197,7 +154,7 @@ FindBWB = function(my.df, is.list = FALSE) {
     return(NULL)
   } else {
     # if you have two expirations, pick the minimum for now
-    my.df = subset(my.df, cal.dte == min(cal.dte))
+    my.df = subset(my.df, cal.dte == max(cal.dte))
     # deltas are negative, trading in puts only
     my.df[PickByDelta(my.df[,16],  -60),1] =  1 # col 16 is Delta, 1 is Ex.Pos.
     my.df[PickByDelta(my.df[,16],  -40),1] = -2
@@ -234,52 +191,38 @@ InitialCredit = function(trades) {
   net.credit = sum(trades[,1] * trades[,28])
 }
 
-# return the strike price of the short call in a single condor
-ShortCall = function(trades) {
-  strike = min(trades[trades$Call.Put == "C",6])
-}
-
-# return the strike price of the short put in a single condor
-ShortPut = function(trades) {
-  strike = max(trades[trades$Call.Put == "P",6])
-}
-
 # see if exit conditions are met for a given condor, xts underlying, char date
-ShouldExit = function(my.df, my.highs, my.lows, my.date) {
+ShouldExit = function(my.df, my.date) {
   if (is.null(my.cal) || !exists("my.cal")) # should check dates too
     stop("global calendar (my.cal) does not exist or is NULL")
-  if (FloatingProfit(my.df) >= 0.89 * (-1 * InitialCredit(my.df))) 
+  days.open = as.numeric(as.Date(my.date) - my.df[1,]$my.iso.date)
+  #if (days.open < 7)
+  #  return(FALSE)
+  #else if (abs(sum(my.df$Delta * my.df[,1]) / sum(my.df[,1] * my.df$Theta)) > 0.5)
+  if (abs(sum(my.df$Delta * my.df[,1]) / sum(my.df[,1] * my.df$Theta)) > 0.5)
+      return(TRUE)
+  else if (my.df[2,16] < -50 || my.df[2,16] > -30) # middle strike always 2nd
     return(TRUE)
-  else if (FloatingProfit(my.df) <= 2 * InitialCredit(my.df)) # negative val
+  else if (my.df[3,16] < -80 || my.df[3,16] > -40) # upper strike always 3rd
     return(TRUE)
-  else if (bizdays(as.Date(my.date), as.Date(my.df[1,24]), my.cal) <= 5) 
-    return(TRUE)
-  else if (as.numeric(my.highs[my.date]) >= ShortCall(my.df)) 
-    return(TRUE)
-  else if (as.numeric(my.lows[my.date]) <= ShortPut(my.df))
-    return(TRUE)
-  else if (abs(sum(my.df$Delta) / sum(my.df$Theta)) > 0.5)
+  else if (bizdays(as.Date(my.date), as.Date(my.df[1,24]), my.cal) <= 21) 
     return(TRUE)
   else 
     return(FALSE)
 }
 
 # a copy of ShouldExit to give detail on the exit reason
-ExitReason = function(my.df, my.highs, my.lows, my.date) {
+ExitReason = function(my.df, my.date) {
   if (is.null(my.cal) || !exists("my.cal")) # should check dates too
     stop("global calendar (my.cal) does not exist or is NULL")
-  if (FloatingProfit(my.df) >= 0.89 * (-1 * InitialCredit(my.df))) 
-    return(paste("1: 90% Profit hit"))
-  else if (FloatingProfit(my.df) <= 2 * InitialCredit(my.df)) # negative val
-    return(paste("2: 200% Loss hit"))
-  else if (bizdays(as.Date(my.date), as.Date(my.df[1,24]), my.cal) <= 5) 
-    return(paste("3: 5 days until expiration"))
-  else if (as.numeric(my.highs[my.date]) >= ShortCall(my.df)) 
-    return(paste("4: Short call touched"))
-  else if (as.numeric(my.lows[my.date]) <= ShortPut(my.df))
-    return(paste("5: Short put touched"))
-  else if (abs(sum(my.df$Delta) / sum(my.df$Theta)) > 0.5)
-    return(paste("6: DTR > 0.5"))
+  if (abs(sum(my.df$Delta * my.df[,1]) / sum(my.df[,1] * my.df$Theta)) > 0.5) 
+    return(paste("1: DTR > 0.5"))
+  else if (my.df[2,16] < -50 || my.df[2,16] > -30) # middle strike always 2nd
+    return(paste("2: middle (40) strike outside limits")) #, my.df[2,16])) #dbug
+  else if (my.df[3,16] < -80 || my.df[3,16] > -40) # upper strike always 3rd
+    return(paste("3: upper (60) strike outside limits")) #, my.df[2,16])) #dbug
+  else if (bizdays(as.Date(my.date), as.Date(my.df[1,24]), my.cal) <= 20) 
+    return(paste("4: 20 biz DTE"))
   else 
     return(paste("-1: Other"))
 }
@@ -297,7 +240,7 @@ ShouldEnter = function(my.trade.list, my.quote) {
   } else {
     open.exps = unique(my.open.trades$my.exp.date)
   }
-  would.trade.exp = unique(FindCondor(my.quote)$my.exp.date)
+  would.trade.exp = unique(FindBWB(my.quote)$my.exp.date)
   # check for null before running %in%
   if (is.null(would.trade.exp)) {
     return(FALSE)
@@ -306,6 +249,11 @@ ShouldEnter = function(my.trade.list, my.quote) {
   } else {
     return(TRUE)
   }
+}
+
+# calculate Delta / Theta ratio. always positive.
+FindDTR = function(my.df) {
+  abs(sum(my.df[,16] * my.df[,1]) / sum(my.df[,1] * my.df[,19]))
 }
 
 # output a short trade summary data frame given:
@@ -319,7 +267,7 @@ TradeSummary = function(my.df, my.date) {
                     float.profit  = FloatingProfit(my.df),
                     cal.days.open = as.numeric(my.date - my.df[1,]$my.iso.date),
                     close.date    = my.date,
-                    dtrr          = abs(sum(my.df$Delta) / sum(my.df$Theta)))
+                    dtr           = abs(sum(my.df$Delta * my.df[,1]) / sum(my.df[,1] * my.df$Theta)))
   return(as.data.frame(trade.data))
 }
 
@@ -357,9 +305,6 @@ colnames(portfolio.stats) = stats
 my.stats         = rep(list(portfolio.stats), length(my.data))
 names(my.stats)  = names(my.data)
 
-highs = Hi(RUT)
-lows  = Lo(RUT)
-
 total.trades   = 0
 num.inc.quotes = 0
 open.trades    = list()
@@ -385,8 +330,8 @@ for (i in 88:(length(my.data)-1)) {
       # if your quoted symbols aren't there, raise error
       to.update = my.data[[i]]$Symbol %in% open.trades[[j]]$Symbol
       num.true  = length(to.update[to.update == TRUE])
-      if (num.true <= 4) {
-        if (num.true < 4) {
+      if (num.true <= 3) {
+        if (num.true < 3) {
           num.inc.quotes = num.inc.quotes + 1
           symbols.to.update    = my.data[[i]][to.update,]$Symbol
           tmp.update           = subset(open.trades[[j]], 
@@ -413,7 +358,7 @@ for (i in 88:(length(my.data)-1)) {
           open.trades[[j]]$Rho       = my.data[[i]][to.update,]$Rho
         }
         # exit if 90% profit, 200% loss, 5 days till exp, short strike touch
-        if (ShouldExit(open.trades[[j]], highs, lows, names(my.data)[i]))
+        if (ShouldExit(open.trades[[j]], names(my.data)[i]))
           to.exit[j] = TRUE
         # to.exit is now something like c(TRUE, TRUE, TRUE, FALSE, FALSE)
       } else {
@@ -431,8 +376,6 @@ for (i in 88:(length(my.data)-1)) {
       # add to trade log
       for (k in 1:length(open.trades[to.exit])) {
         reason = ExitReason(open.trades[to.exit][[k]], 
-                            highs, 
-                            lows, 
                             names(my.data)[i])
         entry.date = open.trades[to.exit][[k]][1,23]
         oisuf.at.entry = as.numeric(oisuf.values[entry.date,])
@@ -451,12 +394,12 @@ for (i in 88:(length(my.data)-1)) {
   # in 1 TPS backtest, easy, you create new trade every day
   # in 1 TPX backtest, use ShouldEnter()
   # if FindCondor returns NULL, this shouldn't do anything (I think?)
-  potential.condor = FindCondor(my.data[[i]])
-  if (global.mode == "1TPX" && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && ShouldEnter(open.trades, my.data[[i]]) && !is.null(potential.condor) && nrow(potential.condor) == 4) {
-    open.trades[[length(open.trades) + 1]] = potential.condor
+  potential.bfly = FindBWB(my.data[[i]])
+  if (global.mode == "1TPX" && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && ShouldEnter(open.trades, my.data[[i]]) && !is.null(potential.bfly) && nrow(potential.bfly) == 3) {
+    open.trades[[length(open.trades) + 1]] = potential.bfly
     total.trades = total.trades + 1
-  } else if (global.mode == "1TPS" && !is.null(potential.condor) && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && nrow(potential.condor) == 4) {
-    open.trades[[length(open.trades) + 1]] = potential.condor
+  } else if (global.mode == "1TPS" && !is.null(potential.bfly) && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && nrow(potential.bfly) == 3) {
+    open.trades[[length(open.trades) + 1]] = potential.bfly
     total.trades = total.trades + 1
   }
   
@@ -489,48 +432,48 @@ df.closed.trades = do.call('rbind', closed.trades)
 
 # Unit Tests
 # Test ShouldExit does not close brand new trades
-TestNoNewExit = function() {
-  my.df = read.csv("sample-trade")
-  return(ShouldExit(my.df, highs, lows, "2015-01-02") == FALSE)
-}
-# Test ShouldExit's profit-based exit
-TestProfitExit = function() {
-  my.df = read.csv("sample-trade")
-  my.df$mid.price = c(6, 1, 1, 4)
-  return(ShouldExit(my.df, highs, lows, "2015-01-02") == TRUE)
-}
-# Test ShouldExit's loss-based exit
-TestLossExit = function() {
-  my.df = read.csv("sample-trade")
-  my.df$mid.price = c(1, 10, 10, 1)
-  return(ShouldExit(my.df, highs, lows, "2015-01-02") == TRUE)
-}
-# Test ShouldExit's time-based exit doesn't take you out early
-TestEarlyExit = function() {
-  my.df = read.csv("sample-trade")
-  return(ShouldExit(my.df, highs, lows, "2015-01-04") == FALSE)
-}
-# Test ShouldExit's time-based exit doesn't take you out late
-TestLateExit = function() {
-  my.df = read.csv("sample-trade")
-  my.date  = "2016-02-16"
-  modified.rut = RUT
-  modified.rut[my.date,3] = xts(2000, order.by=as.Date(my.date))
-  return(ShouldExit(my.df, modified.rut, as.Date(my.date)) == TRUE)
-}
-# Test ShouldExit's short-strike-based exit
-TestShortCallExit = function() {
-  my.df = read.csv("sample-trade")
-  my.date  = "2016-02-01"
-  modified.rut = RUT
-  modified.rut[my.date,2] = xts(2000, order.by=as.Date(my.date))
-  return(ShouldExit(my.df, modified.rut, as.Date(my.date)) == TRUE)
-}
-TestShortPutExit = function() {
-  my.df = read.csv("sample-trade")
-  my.date  = "2016-02-01" # this date already is lower than short put
-  return(ShouldExit(my.df, highs, lows, my.date) == TRUE)
-}
+# TestNoNewExit = function() {
+#   my.df = read.csv("sample-trade")
+#   return(ShouldExit(my.df, highs, lows, "2015-01-02") == FALSE)
+# }
+# # Test ShouldExit's profit-based exit
+# TestProfitExit = function() {
+#   my.df = read.csv("sample-trade")
+#   my.df$mid.price = c(6, 1, 1, 4)
+#   return(ShouldExit(my.df, highs, lows, "2015-01-02") == TRUE)
+# }
+# # Test ShouldExit's loss-based exit
+# TestLossExit = function() {
+#   my.df = read.csv("sample-trade")
+#   my.df$mid.price = c(1, 10, 10, 1)
+#   return(ShouldExit(my.df, highs, lows, "2015-01-02") == TRUE)
+# }
+# # Test ShouldExit's time-based exit doesn't take you out early
+# TestEarlyExit = function() {
+#   my.df = read.csv("sample-trade")
+#   return(ShouldExit(my.df, highs, lows, "2015-01-04") == FALSE)
+# }
+# # Test ShouldExit's time-based exit doesn't take you out late
+# TestLateExit = function() {
+#   my.df = read.csv("sample-trade")
+#   my.date  = "2016-02-16"
+#   modified.rut = RUT
+#   modified.rut[my.date,3] = xts(2000, order.by=as.Date(my.date))
+#   return(ShouldExit(my.df, modified.rut, as.Date(my.date)) == TRUE)
+# }
+# # Test ShouldExit's short-strike-based exit
+# TestShortCallExit = function() {
+#   my.df = read.csv("sample-trade")
+#   my.date  = "2016-02-01"
+#   modified.rut = RUT
+#   modified.rut[my.date,2] = xts(2000, order.by=as.Date(my.date))
+#   return(ShouldExit(my.df, modified.rut, as.Date(my.date)) == TRUE)
+# }
+# TestShortPutExit = function() {
+#   my.df = read.csv("sample-trade")
+#   my.date  = "2016-02-01" # this date already is lower than short put
+#   return(ShouldExit(my.df, highs, lows, my.date) == TRUE)
+# }
 
 # unit.tests = c(TestEarlyExit(), 
 #                TestLateExit(), 
@@ -566,7 +509,10 @@ x.stats = as.xts(df.stats)
 perf = 100 + cumsum(x.stats$Closed.P.L) + x.stats$Open.P.L
 charts.PerformanceSummary(ROC(perf))
 
-
+for (l in 2010:2016) {
+  print(paste(l, (as.numeric(last(perf[paste(l)], "1 day")) - 
+           as.numeric(first(perf[paste(l)], "1 day"))) / as.numeric(first(perf[paste(l)], "1 day"))))
+}
 
 
 

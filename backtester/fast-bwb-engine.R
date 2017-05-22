@@ -62,11 +62,12 @@ my.cal = create.calendar(holidays = my.holidays,
                          name="my.cal")
 setwd("~/Documents/TradingWithR/backtester/data")
 #getSymbols("^RUT", from=cal.begin) # RIP Yahoo Finance API
-getSymbols("RUT", src="csv", dir="..")
-#oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
-oisuf.raw    = read.csv("../oisuf-rut-all.csv") # 2004-2017
+my.sym = "SPX"
+getSymbols(my.sym, src="csv", dir="..")
+oisuf.raw    = read.csv("../oisuf-spx-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
 kOisufThresh = -200
+kDTRThresh   = 0.5
 
 
 # Choose 1TPX or 1TPS
@@ -119,9 +120,12 @@ OptionQuotesCsv = function(options.file) {
 #   cal.dte, calendar days until expiry
 #   mid.price, the average of the quoted bid and ask (NAs?)
 EnrichOptionsQuotes = function(my.df) {
-  my.df       = my.df[!is.na(my.df$Date),]
-  my.df       = my.df[!is.na(my.df$Bid),]
-  my.df       = my.df[!is.na(my.df$Asked),]
+  my.df = my.df[!is.na(my.df$Date),]
+  my.df = my.df[!is.na(my.df$Bid),]
+  my.df = my.df[!is.na(my.df$Asked),]
+  my.df = my.df[!grepl("D\\d{1,2}$", my.df$Symbol, perl = TRUE),]
+  my.df = my.df[!grepl("\\d{4}(26|27|28|29|30|31)", my.df$Exp.Date),]
+  
   my.exp.date = as.Date(as.character(my.df$Exp.Date), "%y%m%d")
   my.iso.date = as.Date(as.character(my.df$Date), "%y%m%d")
   biz.dte     = bizdays(my.iso.date,
@@ -147,6 +151,7 @@ FindBWB = function(my.df, is.list = FALSE) {
   # clean up to only include traditional monthlies
   # (should be checking this in data export as well)
   my.df = my.df[!grepl("D\\d{1,2}$", my.df$Symbol, perl = TRUE),]
+  my.df = my.df[!grepl("\\d{4}(26|27|28|29|30|31)", my.df$Exp.Date),]
   # clean up to only include possible candidates
   my.df = subset(my.df, cal.dte > 59 & cal.dte < 91)
   # if you have no expirations (a few days like this), return NULL
@@ -191,7 +196,13 @@ InitialCredit = function(trades) {
   net.credit = sum(trades[,1] * trades[,28])
 }
 
+# calculate Delta / Theta ratio. always positive.
+FindDTR = function(my.df) {
+  abs(sum(my.df[,16] * my.df[,1]) / sum(my.df[,1] * my.df[,19]))
+}
+
 # see if exit conditions are met for a given condor, xts underlying, char date
+####### What are results without the strike changes?
 ShouldExit = function(my.df, my.date) {
   if (is.null(my.cal) || !exists("my.cal")) # should check dates too
     stop("global calendar (my.cal) does not exist or is NULL")
@@ -199,12 +210,12 @@ ShouldExit = function(my.df, my.date) {
   #if (days.open < 7)
   #  return(FALSE)
   #else if (abs(sum(my.df$Delta * my.df[,1]) / sum(my.df[,1] * my.df$Theta)) > 0.5)
-  if (abs(sum(my.df$Delta * my.df[,1]) / sum(my.df[,1] * my.df$Theta)) > 0.5)
+  if (FindDTR(my.df) > kDTRThresh)
       return(TRUE)
-  else if (my.df[2,16] < -50 || my.df[2,16] > -30) # middle strike always 2nd
-    return(TRUE)
-  else if (my.df[3,16] < -80 || my.df[3,16] > -40) # upper strike always 3rd
-    return(TRUE)
+  #else if (my.df[2,16] < -50 || my.df[2,16] > -30) # middle strike always 2nd
+  #  return(TRUE)
+  #else if (my.df[3,16] < -80 || my.df[3,16] > -40) # upper strike always 3rd
+  #  return(TRUE)
   else if (bizdays(as.Date(my.date), as.Date(my.df[1,24]), my.cal) <= 21) 
     return(TRUE)
   else 
@@ -215,14 +226,14 @@ ShouldExit = function(my.df, my.date) {
 ExitReason = function(my.df, my.date) {
   if (is.null(my.cal) || !exists("my.cal")) # should check dates too
     stop("global calendar (my.cal) does not exist or is NULL")
-  if (abs(sum(my.df$Delta * my.df[,1]) / sum(my.df[,1] * my.df$Theta)) > 0.5) 
-    return(paste("1: DTR > 0.5"))
-  else if (my.df[2,16] < -50 || my.df[2,16] > -30) # middle strike always 2nd
-    return(paste("2: middle (40) strike outside limits")) #, my.df[2,16])) #dbug
-  else if (my.df[3,16] < -80 || my.df[3,16] > -40) # upper strike always 3rd
-    return(paste("3: upper (60) strike outside limits")) #, my.df[2,16])) #dbug
-  else if (bizdays(as.Date(my.date), as.Date(my.df[1,24]), my.cal) <= 20) 
-    return(paste("4: 20 biz DTE"))
+  if (FindDTR(my.df) > kDTRThresh) 
+    return(paste("1: DTR > ", kDTRThresh))
+  #else if (my.df[2,16] < -50 || my.df[2,16] > -30) # middle strike always 2nd
+  #  return(paste("2: middle (40) strike outside limits")) #, my.df[2,16])) #dbug
+  #else if (my.df[3,16] < -80 || my.df[3,16] > -40) # upper strike always 3rd
+  #  return(paste("3: upper (60) strike outside limits")) #, my.df[2,16])) #dbug
+  else if (bizdays(as.Date(my.date), as.Date(my.df[1,24]), my.cal) <= 21) 
+    return(paste("4: 21 biz DTE"))
   else 
     return(paste("-1: Other"))
 }
@@ -251,11 +262,6 @@ ShouldEnter = function(my.trade.list, my.quote) {
   }
 }
 
-# calculate Delta / Theta ratio. always positive.
-FindDTR = function(my.df) {
-  abs(sum(my.df[,16] * my.df[,1]) / sum(my.df[,1] * my.df[,19]))
-}
-
 # output a short trade summary data frame given:
 # a trade you're about to close
 # the current date as.Date
@@ -263,8 +269,8 @@ TradeSummary = function(my.df, my.date) {
   trade.data = list(open.date     = my.df[1,]$my.iso.date,
                     exp.month     = substr(my.df[1,]$Description, 1, 3),
                     strikes       = toString(my.df$Strike.Price),
-                    init.cred     = InitialCredit(my.df),
-                    float.profit  = FloatingProfit(my.df),
+                    init.debit    = InitialCredit(my.df),
+                    close.profit  = FloatingProfit(my.df),
                     cal.days.open = as.numeric(my.date - my.df[1,]$my.iso.date),
                     close.date    = my.date,
                     dtr           = abs(sum(my.df$Delta * my.df[,1]) / sum(my.df[,1] * my.df$Theta)))
@@ -395,10 +401,10 @@ for (i in 88:(length(my.data)-1)) {
   # in 1 TPX backtest, use ShouldEnter()
   # if FindCondor returns NULL, this shouldn't do anything (I think?)
   potential.bfly = FindBWB(my.data[[i]])
-  if (global.mode == "1TPX" && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && ShouldEnter(open.trades, my.data[[i]]) && !is.null(potential.bfly) && nrow(potential.bfly) == 3) {
+  if (global.mode == "1TPX" && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && ShouldEnter(open.trades, my.data[[i]]) && !is.null(potential.bfly) && nrow(potential.bfly) == 3 && FindDTR(potential.bfly) < 0.5) {
     open.trades[[length(open.trades) + 1]] = potential.bfly
     total.trades = total.trades + 1
-  } else if (global.mode == "1TPS" && !is.null(potential.bfly) && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && nrow(potential.bfly) == 3) {
+  } else if (global.mode == "1TPS" && !is.null(potential.bfly) && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && nrow(potential.bfly) == 3 && FindDTR(potential.bfly) < 0.5) {
     open.trades[[length(open.trades) + 1]] = potential.bfly
     total.trades = total.trades + 1
   }
@@ -499,7 +505,7 @@ if (sum.losses == 0) {
               " OISUF level: ", kOisufThresh))
   print(paste("N trades: ", total.trades, 
               " Profit factor: ", abs(sum.wins / sum.losses), sep=""))
-  print(data.frame(summary(df.closed.trades$reason)))
+  #print(data.frame(summary(df.closed.trades$reason)))
 }
 
 #} # OISUF threshold loop

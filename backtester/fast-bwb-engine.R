@@ -68,6 +68,7 @@ oisuf.raw    = read.csv("../oisuf-spx-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
 kOisufThresh = -200
 kDTRThresh   = 0.5
+kSlippage    = -0.20 # a dime per side entry/exit
 
 
 # Choose 1TPX or 1TPS
@@ -270,7 +271,7 @@ TradeSummary = function(my.df, my.date) {
                     exp.month     = substr(my.df[1,]$Description, 1, 3),
                     strikes       = toString(my.df$Strike.Price),
                     init.debit    = InitialCredit(my.df),
-                    close.profit  = FloatingProfit(my.df),
+                    close.profit  = FloatingProfit(my.df)+kSlippage,
                     cal.days.open = as.numeric(my.date - my.df[1,]$my.iso.date),
                     close.date    = my.date,
                     dtr           = abs(sum(my.df$Delta * my.df[,1]) / sum(my.df[,1] * my.df$Theta)))
@@ -323,7 +324,7 @@ closed.trades  = list()
 #system.time(
 for (i in 88:(length(my.data)-1)) { 
   #browser()
-  #if (i > 1154) browser()
+  #if (i > 780) browser()
   # steps 1 through 3b, operates on open trades
   if (length(open.trades) > 0) { # don't run w/ 0 trades open
     # create indicies of today's trades to exit
@@ -378,7 +379,8 @@ for (i in 88:(length(my.data)-1)) {
     if (length(to.exit[to.exit == TRUE]) > 0) {
       # record profit as closed
       my.stats[[i]][6] = sum(unlist(lapply(open.trades[to.exit], 
-                                           FloatingProfit)))
+                                           FloatingProfit)),
+                             kSlippage)
       # add to trade log
       for (k in 1:length(open.trades[to.exit])) {
         reason = ExitReason(open.trades[to.exit][[k]], 
@@ -411,7 +413,8 @@ for (i in 88:(length(my.data)-1)) {
   
   # Record the floating profit
   my.stats[[i]][7] = sum(unlist(lapply(open.trades, 
-                                       FloatingProfit)))
+                                       FloatingProfit)),
+                         kSlippage)
   # Something something portfolio stats something
   
 }
@@ -435,65 +438,6 @@ lines(1:nrow(df.stats),
       cumsum(df.stats$Closed.P.L))
 
 df.closed.trades = do.call('rbind', closed.trades)
-
-# Unit Tests
-# Test ShouldExit does not close brand new trades
-# TestNoNewExit = function() {
-#   my.df = read.csv("sample-trade")
-#   return(ShouldExit(my.df, highs, lows, "2015-01-02") == FALSE)
-# }
-# # Test ShouldExit's profit-based exit
-# TestProfitExit = function() {
-#   my.df = read.csv("sample-trade")
-#   my.df$mid.price = c(6, 1, 1, 4)
-#   return(ShouldExit(my.df, highs, lows, "2015-01-02") == TRUE)
-# }
-# # Test ShouldExit's loss-based exit
-# TestLossExit = function() {
-#   my.df = read.csv("sample-trade")
-#   my.df$mid.price = c(1, 10, 10, 1)
-#   return(ShouldExit(my.df, highs, lows, "2015-01-02") == TRUE)
-# }
-# # Test ShouldExit's time-based exit doesn't take you out early
-# TestEarlyExit = function() {
-#   my.df = read.csv("sample-trade")
-#   return(ShouldExit(my.df, highs, lows, "2015-01-04") == FALSE)
-# }
-# # Test ShouldExit's time-based exit doesn't take you out late
-# TestLateExit = function() {
-#   my.df = read.csv("sample-trade")
-#   my.date  = "2016-02-16"
-#   modified.rut = RUT
-#   modified.rut[my.date,3] = xts(2000, order.by=as.Date(my.date))
-#   return(ShouldExit(my.df, modified.rut, as.Date(my.date)) == TRUE)
-# }
-# # Test ShouldExit's short-strike-based exit
-# TestShortCallExit = function() {
-#   my.df = read.csv("sample-trade")
-#   my.date  = "2016-02-01"
-#   modified.rut = RUT
-#   modified.rut[my.date,2] = xts(2000, order.by=as.Date(my.date))
-#   return(ShouldExit(my.df, modified.rut, as.Date(my.date)) == TRUE)
-# }
-# TestShortPutExit = function() {
-#   my.df = read.csv("sample-trade")
-#   my.date  = "2016-02-01" # this date already is lower than short put
-#   return(ShouldExit(my.df, highs, lows, my.date) == TRUE)
-# }
-
-# unit.tests = c(TestEarlyExit(), 
-#                TestLateExit(), 
-#                TestLossExit(), 
-#                TestNoNewExit(), 
-#                TestProfitExit(), 
-#                TestShortCallExit(), 
-#                TestShortPutExit())
-# if (all(unit.tests)) {
-#   print("Tests pass")
-# } else{
-#   print(paste("....-----++++[Tests failed: ", toString(unit.tests)))
-# }
-
 
 # Profit factor
 sum.wins   = sum(subset(df.stats, Closed.P.L > 0)$Closed.P.L)
@@ -523,7 +467,9 @@ for (l in 2010:2016) {
 
 
 
-
+# top10 = function(my.df) {
+#   print(sort(my.df$Percent.O.U, decreasing=T)[1:10])
+# }
 
 
 

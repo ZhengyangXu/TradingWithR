@@ -202,6 +202,7 @@ for (i in 1:length(file.names)) {
   my.data[[i]] = EnrichOptionsQuotes(
                         OptionQuotesCsv(file.names[i])
                       )
+  my.data[[i]] = my.data[[i]][order(my.data[[i]]$Symbol),]
 }
 
 names(my.data) = as.Date(substr(file.names, 4, 11), "%Y%m%d")
@@ -369,7 +370,7 @@ closed.trades  = list()
 #system.time(
 for (i in 88:(length(my.data)-1)) { 
   #browser()
-  if (i > 510) browser()
+  #if (i > 510) browser()
   # steps 1 through 3b, operates on open trades
   if (length(open.trades) > 0) { # don't run w/ 0 trades open
     # create indicies of today's trades to exit
@@ -379,7 +380,7 @@ for (i in 88:(length(my.data)-1)) {
       # j will be ahead of the number of entries. check that.
       if (j > length(open.trades)) break
       # update today's trades with today's quotes
-      # if your quoted symbols aren't there, raise error
+      # if none of your quoted symbols are there, raise error
       to.update = my.data[[i]]$Symbol %in% open.trades[[j]]$Symbol
       num.true  = length(to.update[to.update == TRUE])
       if (num.true <= 6) {

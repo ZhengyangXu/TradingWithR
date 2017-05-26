@@ -66,7 +66,8 @@ getSymbols("RUT", src="csv", dir="..")
 #oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
 oisuf.raw    = read.csv("../oisuf-rut-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
-kOisufThresh = 0
+kOisufThresh = -200
+kSlippage    = -0.20
 
 
 # Choose 1TPX or 1TPS
@@ -219,6 +220,7 @@ for (i in 1:length(file.names)) {
   my.data[[i]] = EnrichOptionsQuotes(
                         OptionQuotesCsv(file.names[i])
                       )
+  my.data[[i]] = my.data[[i]][order(my.data[[i]]$Symbol),]
 }
 
 names(my.data) = as.Date(substr(file.names, 4, 11), "%Y%m%d")
@@ -316,7 +318,7 @@ TradeSummary = function(my.df, my.date) {
                     exp.month     = substr(my.df[1,]$Description, 1, 3),
                     strikes       = toString(my.df$Strike.Price),
                     init.cred     = InitialCredit(my.df),
-                    float.profit  = FloatingProfit(my.df),
+                    float.profit  = FloatingProfit(my.df)+kSlippage,
                     cal.days.open = as.numeric(my.date - my.df[1,]$my.iso.date),
                     close.date    = my.date,
                     dtrr          = abs(sum(my.df$Delta) / sum(my.df$Theta)))
@@ -427,7 +429,8 @@ for (i in 88:(length(my.data)-1)) {
     if (length(to.exit[to.exit == TRUE]) > 0) {
       # record profit as closed
       my.stats[[i]][6] = sum(unlist(lapply(open.trades[to.exit], 
-                                           FloatingProfit)))
+                                           FloatingProfit)),
+                             kSlippage)
       # add to trade log
       for (k in 1:length(open.trades[to.exit])) {
         reason = ExitReason(open.trades[to.exit][[k]], 
@@ -462,7 +465,8 @@ for (i in 88:(length(my.data)-1)) {
   
   # Record the floating profit
   my.stats[[i]][7] = sum(unlist(lapply(open.trades, 
-                                       FloatingProfit)))
+                                       FloatingProfit)),
+                         kSlippage)
   # Something something portfolio stats something
   
 }

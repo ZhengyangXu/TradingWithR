@@ -182,6 +182,7 @@ for (i in 1:length(file.names)) {
   my.data[[i]] = EnrichOptionsQuotes(
                         OptionQuotesCsv(file.names[i])
                       )
+  my.data[[i]] = my.data[[i]][order(my.data[[i]]$Symbol),]
 }
 
 names(my.data) = as.Date(substr(file.names, 4, 11), "%Y%m%d")

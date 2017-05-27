@@ -205,6 +205,11 @@ InitialCredit = function(trades) {
   net.credit = sum(trades[,1] * trades[,28])
 }
 
+# calculate Delta / Theta ratio. always positive.
+FindDTR = function(my.df) {
+  abs(sum(my.df[,16] * my.df[,1]) / sum(my.df[,1] * my.df[,19]))
+}
+
 # return the strike price of the short call in a single condor
 ShortCall = function(trades) {
   strike = min(trades[trades$Call.Put == "C",6])
@@ -429,13 +434,15 @@ go = function() {
         && as.numeric(oisuf.values[names(my.data)[i]]) >  kOisufThresh
         && ShouldEnter(open.trades, my.data[[i]])
         && !is.null(potential.condor)
-        && nrow(potential.condor) == 4) {
+        && nrow(potential.condor) == 4
+        && FindDTR(potential.condor) < kDTRThresh) {
       open.trades[[length(open.trades) + 1]] = potential.condor
       total.trades = total.trades + 1
     } else if (global.mode == "1TPS"
                && !is.null(potential.condor)
                && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh
-               && nrow(potential.condor) == 4) {
+               && nrow(potential.condor) == 4
+               && FindDTR(potential.condor) < kDTRThresh) {
       open.trades[[length(open.trades) + 1]] = potential.condor
       total.trades = total.trades + 1
     }
@@ -552,7 +559,9 @@ go = function() {
   #summary(sd(ROC(perf)))
   #summary(sd(ROC(perf2)))
   # profit factor for kOisufThresh = 20 with futures stops on 8/8 = 3.01
+  # PF = 3.2 for thresh = -200 and DTR = 0.8
 } # go()
+
 
 go()
 

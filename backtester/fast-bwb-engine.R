@@ -60,11 +60,11 @@ my.cal = create.calendar(holidays = my.holidays,
                          end.date=cal.end, 
                          weekdays=c("saturday", "sunday"),
                          name="my.cal")
-setwd("~/Documents/TradingWithR/backtester/data")
+setwd("~/Documents/TradingWithR/backtester")
 #getSymbols("^RUT", from=cal.begin) # RIP Yahoo Finance API
 my.sym = "SPX"
-getSymbols(my.sym, src="csv", dir="..")
-oisuf.raw    = read.csv("../oisuf-spx-all.csv") # 2004-2017
+getSymbols(my.sym, src="csv")
+oisuf.raw    = read.csv("oisuf-spx-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
 kOisufThresh = -200
 kDTRThresh   = 0.5
@@ -182,8 +182,8 @@ my.data        = rep(list(), length(file.names))
 
 for (i in 1:length(file.names)) {
   my.data[[i]] = EnrichOptionsQuotes(
-                        OptionQuotesCsv(file.names[i])
-                      )
+                  OptionQuotesCsv(paste(my.sym, "/", file.names[i], sep=""))
+  )
   my.data[[i]] = my.data[[i]][order(my.data[[i]]$Symbol),]
 }
 

@@ -68,9 +68,11 @@ getSymbols(my.sym, src="csv", dir="..")
 oisuf.raw    = read.csv("../oisuf-spx-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
 kOisufThresh = -200
-kDTRThresh   = 5
-kSlippage    = -0.20 # a dime per side entry/exit
-
+kDTRThresh   = 0.6
+kSlippage    = -0.20  # a dime per side entry/exit
+kDTE         = 42     # 35 doesn't appear profitable?
+kContracts   = 20     # 1/100 for normal mode
+kInitBalance = 100000 # 100 for normal mode
 
 # Choose 1TPX or 1TPS
 global.mode = "1TPX"
@@ -157,7 +159,7 @@ FindDBF = function(my.df, my.price) {
   my.df = my.df[!grepl("D\\d{1,2}$", my.df$Symbol, perl = TRUE),]
   my.df = my.df[!grepl("\\d{4}(26|27|28|29|30|31)", my.df$Exp.Date),]
   # clean up to only include possible candidates
-  my.df = subset(my.df, cal.dte == 35)# || cal.dte == 42) # 
+  my.df = subset(my.df, cal.dte == kDTE)# || cal.dte == 42) # 
   # if you have no expirations (a few days like this), return NULL
   if (nrow(my.df) < 10) {
     return(NULL)
@@ -210,12 +212,12 @@ names(my.data) = as.Date(substr(file.names, 4, 11), "%Y%m%d")
 # find floating profit given df of open trades w/ column orig.price
 FloatingProfit = function(trades) {
   floating.profit = (trades[,27] - trades[,28]) * trades[,1]
-  floating.profit = sum(floating.profit)
+  floating.profit = sum(floating.profit)*kContracts*100
 }
 
 # find initial credit given df of open trades w/ column orig.price
 InitialCredit = function(trades) {
-  net.credit = sum(trades[,1] * trades[,28])
+  net.credit = sum(trades[,1] * trades[,28])*kContracts*100
 }
 
 # calculate Delta / Theta ratio. always positive.
@@ -341,7 +343,7 @@ TradeSummary = function(my.df, my.date) {
 #   6.  Copy all open trades to tomorrow
 #   7.  Log portfolio stats to today's portfolio stat object
 
-#for (kOisufThresh in ((0:4)*20)) { # OISUF threshold loop
+#for (kDTRThresh in ((16:25)/10)) { # OISUF threshold loop
 
 # Create a stats object for every day, then rbind them all together later
 # after you've completed the backtest to graph $ and stuff
@@ -400,7 +402,7 @@ for (i in 88:(length(my.data)-1)) {
                                        subset(open.trades[[j]], 
                                               !(Symbol %in% symbols.to.update)))
           open.trades[[j]] = open.trades[[j]][order(
-                                open.trades[[j]]$Strike.Price),]
+                                open.trades[[j]]$Symbol),]
         } else {
           # TODO how do you know what order this is in?
           open.trades[[j]]$mid.price = my.data[[i]][to.update,]$mid.price
@@ -510,15 +512,15 @@ if (sum.losses == 0) {
   print(data.frame(summary(df.closed.trades$reason)))
 }
 
-#} # OISUF threshold loop
+#} # optimzize threshold loop
 
 
 x.stats = as.xts(df.stats)
-perf = 100 + cumsum(x.stats$Closed.P.L) + x.stats$Open.P.L
+perf = kInitBalance + cumsum(x.stats$Closed.P.L) + x.stats$Open.P.L
 charts.PerformanceSummary(ROC(perf))
 
 # for (l in 2010:2016) {
-#   print(paste(l, (as.numeric(last(perf[paste(l)], "1 day")) - 
+#   print(paste(l, (as.numeric(last(perf[paste(l)], "1 day")) -
 #            as.numeric(first(perf[paste(l)], "1 day"))) / as.numeric(first(perf[paste(l)], "1 day"))))
 # }
 

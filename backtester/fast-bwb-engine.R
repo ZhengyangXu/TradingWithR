@@ -68,7 +68,9 @@ oisuf.raw    = read.csv("../oisuf-spx-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
 kOisufThresh = -200
 kDTRThresh   = 0.5
-kSlippage    = -0.20 # a dime per side entry/exit
+kSlippage    = -0.20  # a dime per side entry/exit
+kContracts   = 20     # 1/100 for normal mode
+kInitBalance = 100000 # 100 for normal mode
 
 
 # Choose 1TPX or 1TPS
@@ -190,12 +192,12 @@ names(my.data) = as.Date(substr(file.names, 4, 11), "%Y%m%d")
 # find floating profit given df of open trades w/ column orig.price
 FloatingProfit = function(trades) {
   floating.profit = (trades[,27] - trades[,28]) * trades[,1]
-  floating.profit = sum(floating.profit)
+  floating.profit = sum(floating.profit)*kContracts*100
 }
 
 # find initial credit given df of open trades w/ column orig.price
 InitialCredit = function(trades) {
-  net.credit = sum(trades[,1] * trades[,28])
+  net.credit = sum(trades[,1] * trades[,28])*kContracts*100
 }
 
 # calculate Delta / Theta ratio. always positive.
@@ -355,7 +357,7 @@ for (i in 88:(length(my.data)-1)) {
                                        subset(open.trades[[j]], 
                                               !(Symbol %in% symbols.to.update)))
           open.trades[[j]] = open.trades[[j]][order(
-                                open.trades[[j]]$Strike.Price),]
+                                open.trades[[j]]$Symbol),]
         } else {
           # TODO how do you know what order this is in?
           open.trades[[j]]$mid.price = my.data[[i]][to.update,]$mid.price
@@ -450,14 +452,14 @@ if (sum.losses == 0) {
               " OISUF level: ", kOisufThresh))
   print(paste("N trades: ", total.trades, 
               " Profit factor: ", abs(sum.wins / sum.losses), sep=""))
-  #print(data.frame(summary(df.closed.trades$reason)))
+  print(data.frame(summary(df.closed.trades$reason)))
 }
 
 #} # OISUF threshold loop
 
 
 x.stats = as.xts(df.stats)
-perf = 100 + cumsum(x.stats$Closed.P.L) + x.stats$Open.P.L
+perf = kInitBalance + cumsum(x.stats$Closed.P.L) + x.stats$Open.P.L
 charts.PerformanceSummary(ROC(perf))
 
 for (l in 2010:2016) {

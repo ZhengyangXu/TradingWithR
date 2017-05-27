@@ -60,12 +60,12 @@ my.cal = create.calendar(holidays = my.holidays,
                          end.date=cal.end, 
                          weekdays=c("saturday", "sunday"),
                          name="my.cal")
-setwd("~/Documents/TradingWithR/backtester/data")
+setwd("~/Documents/TradingWithR/backtester")
 #getSymbols("^RUT", from=cal.begin) # RIP Yahoo Finance API
 my.sym = "RUT"
-getSymbols(my.sym, src="csv", dir="..")
+getSymbols(my.sym, src="csv")
 #oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
-oisuf.raw    = read.csv("../oisuf-rut-all.csv") # 2004-2017
+oisuf.raw    = read.csv("oisuf-rut-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
 kOisufThresh = 0
 kSlippage    = -0.20
@@ -182,13 +182,13 @@ FindCondor = function(my.df, is.list = FALSE) {
 
 # redo data load with many files. filename format is mandatory and 
 # only works for 3 letter symbols (e.g. SYM): SYMYYYYMMDDHHMM.csv
-file.names     = list.files(pattern="*.csv")
+file.names     = list.files(path=paste(my.sym), pattern="*.csv")
 my.data        = rep(list(), length(file.names))
 
 for (i in 1:length(file.names)) {
   my.data[[i]] = EnrichOptionsQuotes(
-                        OptionQuotesCsv(file.names[i])
-                      )
+                  OptionQuotesCsv(paste(my.sym, "/", file.names[i], sep=""))
+                 )
   my.data[[i]] = my.data[[i]][order(my.data[[i]]$Symbol),]
 }
 
@@ -374,7 +374,7 @@ go = function() {
                                          subset(open.trades[[j]], 
                                                 !(Symbol %in% symbols.to.update)))
             open.trades[[j]] = open.trades[[j]][order(
-                                  open.trades[[j]]$Strike.Price),]
+                                  open.trades[[j]]$Symbol),]
           } else {
             # TODO how do you know what order this is in?
             open.trades[[j]]$mid.price = my.data[[i]][to.update,]$mid.price
@@ -546,8 +546,9 @@ go = function() {
   x.stats = as.xts(df.stats)
   perf = 100 + cumsum(x.stats$Closed.P.L) + x.stats$Open.P.L
   charts.PerformanceSummary(ROC(perf))
-  perf2 = 100 + cumsum(x.stats$Closed.P.L)
-  charts.PerformanceSummary(ROC(perf2))
+  #perf2 = 100 + cumsum(x.stats$Closed.P.L)
+  #charts.PerformanceSummary(ROC(perf2))
+  
   #summary(sd(ROC(perf)))
   #summary(sd(ROC(perf2)))
   # profit factor for kOisufThresh = 20 with futures stops on 8/8 = 3.01

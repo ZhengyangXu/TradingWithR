@@ -62,12 +62,14 @@ my.cal = create.calendar(holidays = my.holidays,
                          name="my.cal")
 setwd("~/Documents/TradingWithR/backtester/data")
 #getSymbols("^RUT", from=cal.begin) # RIP Yahoo Finance API
-getSymbols("RUT", src="csv", dir="..")
+my.sym = "RUT"
+getSymbols(my.sym, src="csv", dir="..")
 #oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
 oisuf.raw    = read.csv("../oisuf-rut-all.csv") # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
-kOisufThresh = -200
+kOisufThresh = 0
 kSlippage    = -0.20
+kDTRThresh   = 50
 
 
 # Choose 1TPX or 1TPS
@@ -176,40 +178,7 @@ FindCondor = function(my.df, is.list = FALSE) {
   }
 }
 
-# FindBWB: find the strikes of 60-40-20 trade by delta: long 60/20 short 2x 40
-# inputs:
-#   my.df, a data frame consisting of a Delta column and Existing.Posn. column
-#   is.list, a boolean of whether or not the input is actually a list
-# outputs:
-#   a data frame consisting of only the trades to take to establish the BWB
-#   if there is more than one available expiration, take the min for now
-#   TODO: proper multi-expiration handling
-FindBWB = function(my.df, is.list = FALSE) {
-  if (is.list) {
-    my.df = my.df[[1]]
-  }
-  # clean up to only include traditional monthlies
-  # (should be checking this in data export as well)
-  my.df = my.df[!grepl("D\\d{1,2}$", my.df$Symbol, perl = TRUE),]
-  # clean up to only include possible candidates
-  my.df = subset(my.df, cal.dte > 59 & cal.dte < 91)
-  # if you have no expirations (a few days like this), return NULL
-  if (nrow(my.df) == 0) {
-    return(NULL)
-  } else {
-    # if you have two expirations, pick the minimum for now
-    my.df = subset(my.df, cal.dte == min(cal.dte))
-    # deltas are negative, trading in puts only
-    my.df[PickByDelta(my.df[,16],  -60),1] =  1 # col 16 is Delta, 1 is Ex.Pos.
-    my.df[PickByDelta(my.df[,16],  -40),1] = -2
-    my.df[PickByDelta(my.df[,16],  -20),1] =  1
-    # Existing.Posn is NA by default, so this works but is not intuitive:
-    my.open.trades = my.df[!is.na(my.df[,1]),]
-    # add new $orig.price column for later
-    my.open.trades[,28] = my.open.trades[,27] # orig price = mid price
-    return(my.open.trades)
-  }
-}
+# FindBWB: see other file
 
 # redo data load with many files. filename format is mandatory and 
 # only works for 3 letter symbols (e.g. SYM): SYMYYYYMMDDHHMM.csv
@@ -260,7 +229,7 @@ ShouldExit = function(my.df, my.highs, my.lows, my.date) {
     return(TRUE)
   else if (as.numeric(my.lows[my.date]) <= ShortPut(my.df))
     return(TRUE)
-  else if (abs(sum(my.df$Delta) / sum(my.df$Theta)) > 0.5)
+  else if (abs(sum(my.df$Delta) / sum(my.df$Theta)) > kDTRThresh)
     return(TRUE)
   else 
     return(FALSE)
@@ -280,8 +249,8 @@ ExitReason = function(my.df, my.highs, my.lows, my.date) {
     return(paste("4: Short call touched"))
   else if (as.numeric(my.lows[my.date]) <= ShortPut(my.df))
     return(paste("5: Short put touched"))
-  else if (abs(sum(my.df$Delta) / sum(my.df$Theta)) > 0.5)
-    return(paste("6: DTR > 0.5"))
+  else if (abs(sum(my.df$Delta) / sum(my.df$Theta)) > kDTRThresh)
+    return(paste("6: DTR > ",kDTRThresh))
   else 
     return(paste("-1: Other"))
 }
@@ -349,229 +318,242 @@ TradeSummary = function(my.df, my.date) {
 
 # Create a stats object for every day, then rbind them all together later
 # after you've completed the backtest to graph $ and stuff
-stats = c("Delta", "Gamma",      "Theta",    "Vega",     "Rho", 
-                   "Closed P/L", "Open P/L", "Days P/L", "Reg-T Req")
-# this needs to copy the my.data object for dates
-portfolio.stats           = rep(0, 9) 
-dim(portfolio.stats)      = c(1, 9)
-colnames(portfolio.stats) = stats
-
-my.stats         = rep(list(portfolio.stats), length(my.data))
-names(my.stats)  = names(my.data)
-
-highs = Hi(RUT)
-lows  = Lo(RUT)
-
-total.trades   = 0
-num.inc.quotes = 0
-open.trades    = list()
-closed.trades  = list()
-
-# 2015-09-08 had fucked up price on SEP 1300 calls, fixed by hand in csv
-# main backtest loop for now, operates on days
-# symbols change names at i=29, delta messed up at i < 88
-#profvis({
-#system.time(
-for (i in 88:(length(my.data)-1)) { 
-  #browser()
-  #if (i > 1154) browser()
-  # steps 1 through 3b, operates on open trades
-  if (length(open.trades) > 0) { # don't run w/ 0 trades open
-    # create indicies of today's trades to exit
-    to.exit = rep(FALSE, length(open.trades)) # ignore quote df w/ FALSE
-    for (j in 1:length(open.trades)) {
-      # if you ever close a trade before getting done with this loop
-      # j will be ahead of the number of entries. check that.
-      if (j > length(open.trades)) break
-      # update today's trades with today's quotes
-      # if your quoted symbols aren't there, raise error
-      to.update = my.data[[i]]$Symbol %in% open.trades[[j]]$Symbol
-      num.true  = length(to.update[to.update == TRUE])
-      if (num.true <= 4) {
-        if (num.true < 4) {
-          num.inc.quotes = num.inc.quotes + 1
-          symbols.to.update    = my.data[[i]][to.update,]$Symbol
-          tmp.update           = subset(open.trades[[j]], 
-                                        Symbol %in% symbols.to.update)
-          # TODO how do you know what order this is in?
-          tmp.update$mid.price = my.data[[i]][to.update,]$mid.price
-          tmp.update$Delta     = my.data[[i]][to.update,]$Delta
-          tmp.update$Gamma     = my.data[[i]][to.update,]$Gamma
-          tmp.update$Vega      = my.data[[i]][to.update,]$Vega
-          tmp.update$Theta     = my.data[[i]][to.update,]$Theta
-          tmp.update$Rho       = my.data[[i]][to.update,]$Rho
-          open.trades[[j]]     = rbind(tmp.update, 
-                                       subset(open.trades[[j]], 
-                                              !(Symbol %in% symbols.to.update)))
-          open.trades[[j]] = open.trades[[j]][order(
-                                open.trades[[j]]$Strike.Price),]
+go = function() {
+  stats = c("Delta", "Gamma",      "Theta",    "Vega",     "Rho", 
+                     "Closed P/L", "Open P/L", "Days P/L", "Reg-T Req")
+  # this needs to copy the my.data object for dates
+  portfolio.stats           = rep(0, 9) 
+  dim(portfolio.stats)      = c(1, 9)
+  colnames(portfolio.stats) = stats
+  
+  my.stats         = rep(list(portfolio.stats), length(my.data))
+  names(my.stats)  = names(my.data)
+  
+  highs = Hi(get(my.sym))
+  lows  = Lo(get(my.sym))
+  
+  total.trades   = 0
+  num.inc.quotes = 0
+  open.trades    = list()
+  closed.trades  = list()
+  
+  # 2015-09-08 had fucked up price on SEP 1300 calls, fixed by hand in csv
+  # main backtest loop for now, operates on days
+  # symbols change names at i=29, delta messed up at i < 88
+  #profvis({
+  #system.time(
+  for (i in 88:(length(my.data)-1)) { 
+    #browser()
+    #if (i > 470) browser()
+    # steps 1 through 3b, operates on open trades
+    if (length(open.trades) > 0) { # don't run w/ 0 trades open
+      # create indicies of today's trades to exit
+      to.exit = rep(FALSE, length(open.trades)) # ignore quote df w/ FALSE
+      for (j in 1:length(open.trades)) {
+        # if you ever close a trade before getting done with this loop
+        # j will be ahead of the number of entries. check that.
+        if (j > length(open.trades)) break
+        # update today's trades with today's quotes
+        # if your quoted symbols aren't there, raise error
+        to.update = my.data[[i]]$Symbol %in% open.trades[[j]]$Symbol
+        num.true  = length(to.update[to.update == TRUE])
+        if (num.true <= 4) {
+          if (num.true < 4) {
+            num.inc.quotes = num.inc.quotes + 1
+            symbols.to.update    = my.data[[i]][to.update,]$Symbol
+            tmp.update           = subset(open.trades[[j]], 
+                                          Symbol %in% symbols.to.update)
+            # TODO how do you know what order this is in?
+            tmp.update$mid.price = my.data[[i]][to.update,]$mid.price
+            tmp.update$Delta     = my.data[[i]][to.update,]$Delta
+            tmp.update$Gamma     = my.data[[i]][to.update,]$Gamma
+            tmp.update$Vega      = my.data[[i]][to.update,]$Vega
+            tmp.update$Theta     = my.data[[i]][to.update,]$Theta
+            tmp.update$Rho       = my.data[[i]][to.update,]$Rho
+            open.trades[[j]]     = rbind(tmp.update, 
+                                         subset(open.trades[[j]], 
+                                                !(Symbol %in% symbols.to.update)))
+            open.trades[[j]] = open.trades[[j]][order(
+                                  open.trades[[j]]$Strike.Price),]
+          } else {
+            # TODO how do you know what order this is in?
+            open.trades[[j]]$mid.price = my.data[[i]][to.update,]$mid.price
+            open.trades[[j]]$Delta     = my.data[[i]][to.update,]$Delta
+            open.trades[[j]]$Gamma     = my.data[[i]][to.update,]$Gamma
+            open.trades[[j]]$Vega      = my.data[[i]][to.update,]$Vega
+            open.trades[[j]]$Theta     = my.data[[i]][to.update,]$Theta
+            open.trades[[j]]$Rho       = my.data[[i]][to.update,]$Rho
+          }
+          # exit if 90% profit, 200% loss, 5 days till exp, short strike touch
+          if (ShouldExit(open.trades[[j]], highs, lows, names(my.data)[i]))
+            to.exit[j] = TRUE
+          # to.exit is now something like c(TRUE, TRUE, TRUE, FALSE, FALSE)
         } else {
-          # TODO how do you know what order this is in?
-          open.trades[[j]]$mid.price = my.data[[i]][to.update,]$mid.price
-          open.trades[[j]]$Delta     = my.data[[i]][to.update,]$Delta
-          open.trades[[j]]$Gamma     = my.data[[i]][to.update,]$Gamma
-          open.trades[[j]]$Vega      = my.data[[i]][to.update,]$Vega
-          open.trades[[j]]$Theta     = my.data[[i]][to.update,]$Theta
-          open.trades[[j]]$Rho       = my.data[[i]][to.update,]$Rho
+          stop(paste("Quote for", 
+                     names(my.data)[i], 
+                     "does not contain entries for open trades"))
         }
-        # exit if 90% profit, 200% loss, 5 days till exp, short strike touch
-        if (ShouldExit(open.trades[[j]], highs, lows, names(my.data)[i]))
-          to.exit[j] = TRUE
-        # to.exit is now something like c(TRUE, TRUE, TRUE, FALSE, FALSE)
-      } else {
-        stop(paste("Quote for", 
-                   names(my.data)[i], 
-                   "does not contain entries for open trades"))
+      }
+      # record open P/L as closed P/L for today for those indicies set TRUE
+      # use cumsum() later to build an equity curve
+      if (length(to.exit[to.exit == TRUE]) > 0) {
+        # record profit as closed
+        my.stats[[i]][6] = sum(unlist(lapply(open.trades[to.exit], 
+                                             FloatingProfit)),
+                               kSlippage)
+        # add to trade log
+        for (k in 1:length(open.trades[to.exit])) {
+          reason = ExitReason(open.trades[to.exit][[k]], 
+                              highs, 
+                              lows, 
+                              names(my.data)[i])
+          entry.date = open.trades[to.exit][[k]][1,23]
+          oisuf.at.entry = as.numeric(oisuf.values[entry.date,])
+          closed.trades[[length(closed.trades)+1]] = 
+            cbind(oisuf.at.entry,
+                  TradeSummary(open.trades[to.exit][[k]],
+                               as.Date(names(my.data)[i])),
+                  reason)
+        }
+        # close trades by setting those indicies to NULL
+        open.trades[to.exit] = NULL
       }
     }
-    # record open P/L as closed P/L for today for those indicies set TRUE
-    # use cumsum() later to build an equity curve
-    if (length(to.exit[to.exit == TRUE]) > 0) {
-      # record profit as closed
-      my.stats[[i]][6] = sum(unlist(lapply(open.trades[to.exit], 
-                                           FloatingProfit)),
-                             kSlippage)
-      # add to trade log
-      for (k in 1:length(open.trades[to.exit])) {
-        reason = ExitReason(open.trades[to.exit][[k]], 
-                            highs, 
-                            lows, 
-                            names(my.data)[i])
-        entry.date = open.trades[to.exit][[k]][1,23]
-        oisuf.at.entry = as.numeric(oisuf.values[entry.date,])
-        closed.trades[[length(closed.trades)+1]] = 
-          cbind(oisuf.at.entry,
-                TradeSummary(open.trades[to.exit][[k]],
-                             as.Date(names(my.data)[i])),
-                reason)
-      }
-      # close trades by setting those indicies to NULL
-      open.trades[to.exit] = NULL
+    
+    # Step 4 and 5. Decide if we should make a new trade
+    # in 1 TPS backtest, easy, you create new trade every day
+    # in 1 TPX backtest, use ShouldEnter()
+    # if FindCondor returns NULL, this shouldn't do anything (I think?)
+    potential.condor = FindCondor(my.data[[i]])
+    if (global.mode == "1TPX" 
+        && as.numeric(oisuf.values[names(my.data)[i]]) >  kOisufThresh
+        && ShouldEnter(open.trades, my.data[[i]])
+        && !is.null(potential.condor)
+        && nrow(potential.condor) == 4) {
+      open.trades[[length(open.trades) + 1]] = potential.condor
+      total.trades = total.trades + 1
+    } else if (global.mode == "1TPS"
+               && !is.null(potential.condor)
+               && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh
+               && nrow(potential.condor) == 4) {
+      open.trades[[length(open.trades) + 1]] = potential.condor
+      total.trades = total.trades + 1
     }
+    
+    # Record the floating profit
+    my.stats[[i]][7] = sum(unlist(lapply(open.trades, 
+                                         FloatingProfit)),
+                           kSlippage)
+    # Something something portfolio stats something
+    
+  }
+  #) # end system.time
+  #}) # end profvis
+  # Easier view of stats manually after the fact
+  df.stats = data.frame(
+              matrix(
+                unlist(my.stats[-length(my.stats)]), 
+                nrow=length(my.stats)-1, 
+                byrow=T, 
+                dimnames=list(names(my.stats)[-length(my.stats)], 
+                              colnames(portfolio.stats))))
+  
+  # Plot the floating and closed profit
+  plot(1:nrow(df.stats), 
+       cumsum(df.stats$Closed.P.L) + df.stats$Open.P.L, 
+       type='l', 
+       col='red')
+  lines(1:nrow(df.stats), 
+        cumsum(df.stats$Closed.P.L))
+  
+  df.closed.trades = do.call('rbind', closed.trades)
+  
+  # Unit Tests
+  # Test ShouldExit does not close brand new trades
+  TestNoNewExit = function() {
+    my.df = read.csv("sample-trade")
+    return(ShouldExit(my.df, highs, lows, "2015-01-02") == FALSE)
+  }
+  # Test ShouldExit's profit-based exit
+  TestProfitExit = function() {
+    my.df = read.csv("sample-trade")
+    my.df$mid.price = c(6, 1, 1, 4)
+    return(ShouldExit(my.df, highs, lows, "2015-01-02") == TRUE)
+  }
+  # Test ShouldExit's loss-based exit
+  TestLossExit = function() {
+    my.df = read.csv("sample-trade")
+    my.df$mid.price = c(1, 10, 10, 1)
+    return(ShouldExit(my.df, highs, lows, "2015-01-02") == TRUE)
+  }
+  # Test ShouldExit's time-based exit doesn't take you out early
+  TestEarlyExit = function() {
+    my.df = read.csv("sample-trade")
+    return(ShouldExit(my.df, highs, lows, "2015-01-04") == FALSE)
+  }
+  # Test ShouldExit's time-based exit doesn't take you out late
+  TestLateExit = function() {
+    my.df = read.csv("sample-trade")
+    my.date  = "2016-02-16"
+    modified.rut = RUT
+    modified.rut[my.date,3] = xts(2000, order.by=as.Date(my.date))
+    return(ShouldExit(my.df, modified.rut, as.Date(my.date)) == TRUE)
+  }
+  # Test ShouldExit's short-strike-based exit
+  TestShortCallExit = function() {
+    my.df = read.csv("sample-trade")
+    my.date  = "2016-02-01"
+    modified.rut = RUT
+    modified.rut[my.date,2] = xts(2000, order.by=as.Date(my.date))
+    return(ShouldExit(my.df, modified.rut, as.Date(my.date)) == TRUE)
+  }
+  TestShortPutExit = function() {
+    my.df = read.csv("sample-trade")
+    my.date  = "2016-02-01" # this date already is lower than short put
+    return(ShouldExit(my.df, highs, lows, my.date) == TRUE)
   }
   
-  # Step 4 and 5. Decide if we should make a new trade
-  # in 1 TPS backtest, easy, you create new trade every day
-  # in 1 TPX backtest, use ShouldEnter()
-  # if FindCondor returns NULL, this shouldn't do anything (I think?)
-  potential.condor = FindCondor(my.data[[i]])
-  if (global.mode == "1TPX" && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && ShouldEnter(open.trades, my.data[[i]]) && !is.null(potential.condor) && nrow(potential.condor) == 4) {
-    open.trades[[length(open.trades) + 1]] = potential.condor
-    total.trades = total.trades + 1
-  } else if (global.mode == "1TPS" && !is.null(potential.condor) && as.numeric(oisuf.values[names(my.data)[i]]) > kOisufThresh && nrow(potential.condor) == 4) {
-    open.trades[[length(open.trades) + 1]] = potential.condor
-    total.trades = total.trades + 1
+  # unit.tests = c(TestEarlyExit(), 
+  #                TestLateExit(), 
+  #                TestLossExit(), 
+  #                TestNoNewExit(), 
+  #                TestProfitExit(), 
+  #                TestShortCallExit(), 
+  #                TestShortPutExit())
+  # if (all(unit.tests)) {
+  #   print("Tests pass")
+  # } else{
+  #   print(paste("....-----++++[Tests failed: ", toString(unit.tests)))
+  # }
+  
+  
+  # Profit factor
+  sum.wins   = sum(subset(df.stats, Closed.P.L > 0)$Closed.P.L)
+  sum.losses = sum(subset(df.stats, Closed.P.L < 0)$Closed.P.L)
+  if (sum.losses == 0) {
+    print("Profit factor: inf.")
+  } else {
+    print(paste("From: ", cal.begin, " To: ", cal.end,  
+                " OISUF level: ", kOisufThresh))
+    print(paste("N trades: ", total.trades, 
+                " Profit factor: ", abs(sum.wins / sum.losses), sep=""))
+    print(data.frame(summary(df.closed.trades$reason)))
   }
   
-  # Record the floating profit
-  my.stats[[i]][7] = sum(unlist(lapply(open.trades, 
-                                       FloatingProfit)),
-                         kSlippage)
-  # Something something portfolio stats something
+  #} # OISUF threshold loop
   
-}
-#) # end system.time
-#}) # end profvis
-# Easier view of stats manually after the fact
-df.stats = data.frame(
-            matrix(
-              unlist(my.stats[-length(my.stats)]), 
-              nrow=length(my.stats)-1, 
-              byrow=T, 
-              dimnames=list(names(my.stats)[-length(my.stats)], 
-                            colnames(portfolio.stats))))
+  
+  x.stats = as.xts(df.stats)
+  perf = 100 + cumsum(x.stats$Closed.P.L) + x.stats$Open.P.L
+  charts.PerformanceSummary(ROC(perf))
+  perf2 = 100 + cumsum(x.stats$Closed.P.L)
+  charts.PerformanceSummary(ROC(perf2))
+  #summary(sd(ROC(perf)))
+  #summary(sd(ROC(perf2)))
+  # profit factor for kOisufThresh = 20 with futures stops on 8/8 = 3.01
+} # go()
 
-# Plot the floating and closed profit
-plot(1:nrow(df.stats), 
-     cumsum(df.stats$Closed.P.L) + df.stats$Open.P.L, 
-     type='l', 
-     col='red')
-lines(1:nrow(df.stats), 
-      cumsum(df.stats$Closed.P.L))
-
-df.closed.trades = do.call('rbind', closed.trades)
-
-# Unit Tests
-# Test ShouldExit does not close brand new trades
-TestNoNewExit = function() {
-  my.df = read.csv("sample-trade")
-  return(ShouldExit(my.df, highs, lows, "2015-01-02") == FALSE)
-}
-# Test ShouldExit's profit-based exit
-TestProfitExit = function() {
-  my.df = read.csv("sample-trade")
-  my.df$mid.price = c(6, 1, 1, 4)
-  return(ShouldExit(my.df, highs, lows, "2015-01-02") == TRUE)
-}
-# Test ShouldExit's loss-based exit
-TestLossExit = function() {
-  my.df = read.csv("sample-trade")
-  my.df$mid.price = c(1, 10, 10, 1)
-  return(ShouldExit(my.df, highs, lows, "2015-01-02") == TRUE)
-}
-# Test ShouldExit's time-based exit doesn't take you out early
-TestEarlyExit = function() {
-  my.df = read.csv("sample-trade")
-  return(ShouldExit(my.df, highs, lows, "2015-01-04") == FALSE)
-}
-# Test ShouldExit's time-based exit doesn't take you out late
-TestLateExit = function() {
-  my.df = read.csv("sample-trade")
-  my.date  = "2016-02-16"
-  modified.rut = RUT
-  modified.rut[my.date,3] = xts(2000, order.by=as.Date(my.date))
-  return(ShouldExit(my.df, modified.rut, as.Date(my.date)) == TRUE)
-}
-# Test ShouldExit's short-strike-based exit
-TestShortCallExit = function() {
-  my.df = read.csv("sample-trade")
-  my.date  = "2016-02-01"
-  modified.rut = RUT
-  modified.rut[my.date,2] = xts(2000, order.by=as.Date(my.date))
-  return(ShouldExit(my.df, modified.rut, as.Date(my.date)) == TRUE)
-}
-TestShortPutExit = function() {
-  my.df = read.csv("sample-trade")
-  my.date  = "2016-02-01" # this date already is lower than short put
-  return(ShouldExit(my.df, highs, lows, my.date) == TRUE)
-}
-
-# unit.tests = c(TestEarlyExit(), 
-#                TestLateExit(), 
-#                TestLossExit(), 
-#                TestNoNewExit(), 
-#                TestProfitExit(), 
-#                TestShortCallExit(), 
-#                TestShortPutExit())
-# if (all(unit.tests)) {
-#   print("Tests pass")
-# } else{
-#   print(paste("....-----++++[Tests failed: ", toString(unit.tests)))
-# }
-
-
-# Profit factor
-sum.wins   = sum(subset(df.stats, Closed.P.L > 0)$Closed.P.L)
-sum.losses = sum(subset(df.stats, Closed.P.L < 0)$Closed.P.L)
-if (sum.losses == 0) {
-  print("Profit factor: inf.")
-} else {
-  print(paste("From: ", cal.begin, " To: ", cal.end,  
-              " OISUF level: ", kOisufThresh))
-  print(paste("N trades: ", total.trades, 
-              " Profit factor: ", abs(sum.wins / sum.losses), sep=""))
-  print(data.frame(summary(df.closed.trades$reason)))
-}
-
-#} # OISUF threshold loop
-
-
-x.stats = as.xts(df.stats)
-perf = 100 + cumsum(x.stats$Closed.P.L) + x.stats$Open.P.L
-charts.PerformanceSummary(ROC(perf))
-
-
-
+go()
 
 
 

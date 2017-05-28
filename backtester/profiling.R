@@ -223,3 +223,7 @@ foo.data = my.data[[1]]
 microbenchmark(FindCondor(foo.data),
                NewFindCondor(foo.data),
                times=1000)
+
+microbenchmark(my.data[[i]][match(open.trades[[j]]$Symbol, my.data[[i]]$Symbol),],
+               my.data[[i]][my.data[[i]]$Symbol %in% open.trades[[j]]$Symbol,],
+               times=1000)

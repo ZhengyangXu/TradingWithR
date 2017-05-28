@@ -414,7 +414,7 @@ doStuff = function(my.opt) {
                                                        my.opt[3], 
                      my.matrix$ND[my.matrix$type == "call"]/252)
   
-  my.matrix$atmniv[my.matrix$type == "put"] = fATMNIV(my.opt[4], # 4 here? or 1?
+  my.matrix$atmniv[my.matrix$type == "put"] = fATMNIV(my.opt[4],
                                                       my.opt[5], 
                                                       my.opt[6], 
                      my.matrix$ND[my.matrix$type == "put"]/252)

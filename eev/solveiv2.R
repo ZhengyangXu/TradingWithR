@@ -496,13 +496,13 @@ my.matrix$curve = fSlopeParm(toOpt[9], toOpt[10], my.matrix$ND/252)
 
 toOpt[1:6] = c(0.2738, -3.0751, -0.0076, 0.2691, -0.1371, -0.0684)
 my.matrix$atmniv[my.matrix$type == "call"] = fATMNIV(toOpt[1], 
-                                                               toOpt[2], 
-                                                               toOpt[3], 
+                                                     toOpt[2], 
+                                                     toOpt[3], 
                    my.matrix$ND[my.matrix$type == "call"]/252)
 
-my.matrix$atmniv[my.matrix$type == "put"] = fATMNIV(toOpt[4], # to 4 from 1? 
-                                                              toOpt[5], 
-                                                              toOpt[6], 
+my.matrix$atmniv[my.matrix$type == "put"] = fATMNIV(toOpt[4],
+                                                    toOpt[5], 
+                                                    toOpt[6], 
                    my.matrix$ND[my.matrix$type == "put"]/252)
 
 my.matrix$estniv = fEstNIV(my.matrix$slope, 

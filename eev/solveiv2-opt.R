@@ -77,6 +77,7 @@ uiMinA    = 0.011
 uiMaxParm = 6     # 600%
 uiMaxSkew = 1
 uiOptMult = 100
+maxOVVSkew = 1
 
 underly  <- 72.05
 riskfr   <- 0.0025
@@ -128,9 +129,12 @@ my.matrix = mydata[!is.na(mydata$Date),]
 # calls other functions? [yes]
 # Ac, Bc, Cc, Ap, Bp, Cp, VSA, VSB, VCA, VCB, IEV
 # [1] [2] [3] [4] [5] [6] [7]  [8]  [9]  [10]  [11]
-optLower = numeric(11) # TODO set defaults here
-optUpper = numeric(11) # TODO set defaults here
-toOpt    = numeric(11) # TODO randomize these between upper/lower defaults?
+optLower = c(uiMinA, rep(-1*uiMaxParm, 2), 
+             uiMinA, rep(-1*uiMaxParm, 2), 
+             rep(-1*uiMaxParm, 4),
+             uiMinIEV)
+optUpper = rep(uiMaxParm, 11)
+#my.opt    = runif(11)          # GenSA generates random numbers itself
 
 # oh god these functions are from the internet
 # but they make values match more or less Brian's sheet (mean(err) ~ 1e-5)
@@ -288,97 +292,6 @@ fvwErr = function(normIV, estNormIV, vega, ivNVMult) {
   return((normIV-estNormIV)*vega*ivNVMult)
 }
 
-# Newton-Raphson root finding method for BS
-NewtonSolve <- function(x, Fprime, tol=1.e-7, maxsteps=25, verbose=FALSE){
-  
-  res <- Fprime(x)
-  if( abs(res$Fx)<tol ){
-    ## ... already got a root with 0 Newton steps
-    res$conv <- 0
-    return(res)
-  }
-  
-  if(verbose)
-    cat("Newton\n Step  x            Fx         DFx        NewtonCorrection\n")
-  
-  for(step in 1:maxsteps){
-    NewtonCorrection <- res$Fx / res$DFx
-    
-    ## update current guess for root
-    x   <- x - NewtonCorrection
-    
-    ## evaluate target function and its derivative
-    res <- Fprime(x)
-    
-    if(verbose)
-      cat(sprintf("%3d   % .3e   % .1e   % .1e   % .1e\n", step, x, res$Fx, res$Fx, NewtonCorrection))
-    
-    if( abs(res$Fx)<tol ){
-      ## got a root with "step" Newton steps
-      res$conv <- step
-      return(res)
-    }
-  }
-  ## no convergence
-  res$conv <- -1
-  res
-}
-
-# implementation of Black-Scholes using Newton-Raphson method
-ImpliedBSVol <- function(type, volGuess, Spot, Strike,
-                         riskfree, dividend, TTM,
-                         Cprice, verbose=FALSE){
-  
-  ## Evaluates target function whose root is to be found, as well as derivative
-  ## wrt sigma of target function.
-  ## Target function is the difference between the price obtained from
-  ## BS formula evaluated at vol sigma ("BSprice"),
-  ## minus actual call price to be inverted ("Cprice").
-  BSprimeCalls <- function(sigma){
-    sTTM    <- sqrt(TTM)
-    sigmaT  <- sigma*sTTM
-    d1      <- (log(Spot/Strike) + (riskfr - dividend + sigma^2/2)*TTM)/sigmaT
-    d2      <- d1 - sigmaT
-    Strikerf<- Strike*exp(-riskfree*TTM)
-    Spotdivd<- Spot  *exp(-dividend*TTM)
-    # calls
-    BSprice <- pnorm(d1)*Spotdivd - pnorm(d2)*Strikerf
-    d2prime <- d1/sigma
-    d1prime <- sTTM + d2prime
-    BSpriceprime <- d1prime*dnorm(d1)*Spotdivd - d2prime*dnorm(d2)*Strikerf
-    list(x  =sigma,
-         Fx =BSprice-Cprice,
-         DFx=BSpriceprime)
-  }
-  
-  BSprimePuts <- function(sigma){
-    sTTM    <- sqrt(TTM)
-    sigmaT  <- sigma*sTTM
-    d1      <- (log(Spot/Strike) + (riskfr - dividend + sigma^2/2)*TTM)/sigmaT
-    d2      <- d1 - sigmaT
-    Strikerf<- Strike*exp(-riskfree*TTM)
-    Spotdivd<- Spot  *exp(-dividend*TTM)
-    # puts
-    BSprice <- pnorm(-d2)*Strikerf - pnorm(-d1)*Spotdivd
-    d2prime <- d1/sigma
-    d1prime <- sTTM + d2prime
-    BSpriceprime <- d1prime*dnorm(d1)*Spotdivd - d2prime*dnorm(d2)*Strikerf
-    list(x  =sigma,
-         Fx =BSprice-Cprice,
-         DFx=BSpriceprime)
-  }
-  if (type == "call") {
-    res <- NewtonSolve(volGuess,BSprimeCalls,verbose=verbose)
-    res$x
-  } else if (type == "put") {
-    res <- NewtonSolve(volGuess,BSprimePuts,verbose=verbose)
-    res$x
-  }
-  else {
-    stop("neither put nor call specified")
-  }
-}
-
 # Set up calendar
 my.cal = create.calendar(holidays = uiHolidays, 
                          start.date = cal_begin, 
@@ -473,62 +386,80 @@ for (i in 1:length(my.matrix$Strike.Price)) {
   #                                     avg.iv)
 }
 
-# try out one of them there functions
-maxOVVSkew = 1
-my.matrix$OVVSkew = fOVVSkew(my.matrix$Strike.Price,
-                                  underly,
-                                  dividend,
-                                  my.matrix$ND/252,
-                                  maxOVVSkew)
+############################## optimize time starts here?
 
-# Some rough testing using some shared setup from <RQL examples.R>
-toOpt[11] = 1.1439
-my.matrix$NormIV = fNormIV(my.matrix$ND, 
-                                my.matrix$ED, 
-                                my.matrix$BD,
-                                toOpt[11],
-                                my.matrix$CalcIV)
-# Ac, Bc, Cc, Ap, Bp, Cp, VSA, VSB, VCA, VCB, IEV
-# [1] [2] [3] [4] [5] [6] [7]  [8]  [9]  [10]  [11]
-toOpt[7:10] = c(-0.0613, -0.0836, 0.0215, 0.6534)
-my.matrix$slope = fSlopeParm(toOpt[7], toOpt[8], my.matrix$ND/252)
-my.matrix$curve = fSlopeParm(toOpt[9], toOpt[10], my.matrix$ND/252)
+doStuff = function(my.opt) {
+  my.matrix$OVVSkew = fOVVSkew(my.matrix$Strike.Price,
+                               underly,
+                               dividend,
+                               my.matrix$ND/252,
+                               maxOVVSkew)
+  
+  # Some rough testing using some shared setup from <RQL examples.R>
+  #my.opt[11] = 1.1439
+  my.matrix$NormIV = fNormIV(my.matrix$ND, 
+                                  my.matrix$ED, 
+                                  my.matrix$BD,
+                                  my.opt[11],
+                                  my.matrix$CalcIV)
+  # Ac, Bc, Cc, Ap, Bp, Cp, VSA, VSB, VCA, VCB, IEV
+  # [1] [2] [3] [4] [5] [6] [7]  [8]  [9]  [10]  [11]
+  #my.opt[7:10] = c(-0.0613, -0.0836, 0.0215, 0.6534)
+  my.matrix$slope = fSlopeParm(my.opt[7], my.opt[8], my.matrix$ND/252)
+  my.matrix$curve = fSlopeParm(my.opt[9], my.opt[10], my.matrix$ND/252)
+  
+  #my.opt[1:6] = c(0.2738, -3.0751, -0.0076, 0.2691, -0.1371, -0.0684)
+  my.matrix$atmniv[my.matrix$type == "call"] = fATMNIV(my.opt[1], 
+                                                       my.opt[2], 
+                                                       my.opt[3], 
+                     my.matrix$ND[my.matrix$type == "call"]/252)
+  
+  my.matrix$atmniv[my.matrix$type == "put"] = fATMNIV(my.opt[4], # 4 here? or 1?
+                                                      my.opt[5], 
+                                                      my.opt[6], 
+                     my.matrix$ND[my.matrix$type == "put"]/252)
+  
+  my.matrix$estniv = fEstNIV(my.matrix$slope, 
+                             my.matrix$OVVSkew, 
+                             my.matrix$curve,
+                             my.matrix$atmniv)
+  
+  my.matrix$nivErr = my.matrix$NormIV - my.matrix$estniv
+  
+  my.matrix$nvivMult =  fIVNVMult(my.matrix$BD / my.matrix$ND)
+  
+  my.matrix$vwErr = fvwErr(my.matrix$NormIV,
+                           my.matrix$estniv,
+                           my.matrix$Vega,
+                           my.matrix$nvivMult)
+  
+  
+  my.matrix$vwErr2 = my.matrix$vwErr^2
+  
+  #print(fpriceErr(my.matrix$vwErr2))
+  return(fpriceErr(my.matrix$vwErr2))
+}
+#sum(my.matrix$vwErr2)  #  4.049805
+#mean(my.matrix$vwErr2) #  0.01488899
+#max(my.matrix$nivErr)  #  0.1705075
+#min(my.matrix$nivErr)  # -0.2535272
+#max(my.matrix$vwErr)   #  0.2759597
+#min(my.matrix$vwErr)   # -0.6587683
+print(doStuff())
 
-toOpt[1:6] = c(0.2738, -3.0751, -0.0076, 0.2691, -0.1371, -0.0684)
-my.matrix$atmniv[my.matrix$type == "call"] = fATMNIV(toOpt[1], 
-                                                               toOpt[2], 
-                                                               toOpt[3], 
-                   my.matrix$ND[my.matrix$type == "call"]/252)
+out = GenSA(lower = optLower, upper = optUpper, fn = doStuff,
+            control = list(max.time=120, temperature=10000))
+print(out[c("value", "par", "counts")])
+print(out$trace.mat[c(1, (1:80)*1000),])
 
-my.matrix$atmniv[my.matrix$type == "put"] = fATMNIV(toOpt[1], 
-                                                              toOpt[5], 
-                                                              toOpt[6], 
-                   my.matrix$ND[my.matrix$type == "put"]/252)
 
-my.matrix$estniv = fEstNIV(my.matrix$slope, 
-                                my.matrix$OVVSkew, 
-                                my.matrix$curve,
-                                my.matrix$atmniv)
 
-my.matrix$nivErr = my.matrix$NormIV - my.matrix$estniv
 
-my.matrix$nvivMult =  fIVNVMult(my.matrix$BD / my.matrix$ND)
 
-my.matrix$vwErr = fvwErr(my.matrix$NormIV,
-                              my.matrix$estniv,
-                              my.matrix$Vega,
-                              my.matrix$nvivMult)
 
-# next part doesn't match spreadsheet, but maybe it's something in fvwErr()
-# no, see above, niv calcs aren't right due to bogus IEV test value
-my.matrix$vwErr2 = my.matrix$vwErr^2
 
-print(fpriceErr(my.matrix$vwErr2))
 
-sum(my.matrix$vwErr2)  #  4.049805
-mean(my.matrix$vwErr2) #  0.01488899
-max(my.matrix$nivErr)  #  0.1705075
-min(my.matrix$nivErr)  # -0.2535272
-max(my.matrix$vwErr)   #  0.2759597
-min(my.matrix$vwErr)   # -0.6587683
+
+
+
 

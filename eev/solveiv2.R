@@ -500,7 +500,7 @@ my.matrix$atmniv[my.matrix$type == "call"] = fATMNIV(toOpt[1],
                                                                toOpt[3], 
                    my.matrix$ND[my.matrix$type == "call"]/252)
 
-my.matrix$atmniv[my.matrix$type == "put"] = fATMNIV(toOpt[1], 
+my.matrix$atmniv[my.matrix$type == "put"] = fATMNIV(toOpt[4], # to 4 from 1? 
                                                               toOpt[5], 
                                                               toOpt[6], 
                    my.matrix$ND[my.matrix$type == "put"]/252)
@@ -523,7 +523,8 @@ my.matrix$vwErr = fvwErr(my.matrix$NormIV,
 # no, see above, niv calcs aren't right due to bogus IEV test value
 my.matrix$vwErr2 = my.matrix$vwErr^2
 
-print(fpriceErr(my.matrix$vwErr2))
+print(fpriceErr(my.matrix$vwErr2)) # typo with Aput not being used? 0.1220204
+# results with Aput used: 0.1202432
 
 sum(my.matrix$vwErr2)  #  4.049805
 mean(my.matrix$vwErr2) #  0.01488899

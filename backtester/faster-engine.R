@@ -61,13 +61,12 @@ my.cal = create.calendar(holidays = my.holidays,
                          weekdays=c("saturday", "sunday"),
                          name="my.cal")
 setwd("~/Documents/TradingWithR/backtester")
-#getSymbols("^RUT", from=cal.begin) # RIP Yahoo Finance API
 my.sym = "RUT"
 getSymbols(my.sym, src="csv")
-#oisuf.raw    = read.csv("../oisuf-rut-2014-2016.csv")
-oisuf.raw    = read.csv("oisuf-rut-all.csv") # 2004-2017
+oisuf.file   = paste("oisuf-", my.sym, "-all.csv", sep="")
+oisuf.raw    = read.csv(oisuf.file) # 2004-2017
 oisuf.values = as.xts(oisuf.raw[,2], order.by=as.Date(oisuf.raw[,1]))
-kOisufThresh = 0
+kOisufThresh = 20
 kSlippage    = -0.20
 kDTRThresh   = 50
 
@@ -323,7 +322,7 @@ TradeSummary = function(my.df, my.date) {
 
 # Create a stats object for every day, then rbind them all together later
 # after you've completed the backtest to graph $ and stuff
-go = function() {
+#go = function() {
   stats = c("Delta", "Gamma",      "Theta",    "Vega",     "Rho", 
                      "Closed P/L", "Open P/L", "Days P/L", "Reg-T Req")
   # this needs to copy the my.data object for dates
@@ -364,7 +363,7 @@ go = function() {
         num.true  = length(to.update[to.update == TRUE])
         if (num.true <= 4) {
           if (num.true < 4) {
-            num.inc.quotes = num.inc.quotes + 1
+            num.inc.quotes       = num.inc.quotes + 1
             symbols.to.update    = my.data[[i]][to.update,]$Symbol
             tmp.update           = subset(open.trades[[j]], 
                                           Symbol %in% symbols.to.update)
@@ -396,7 +395,9 @@ go = function() {
         } else {
           stop(paste("Quote for", 
                      names(my.data)[i], 
-                     "does not contain entries for open trades"))
+                     "does not contain entries for open trades. (i = ",
+                     i,
+                     ")"))
         }
       }
       # record open P/L as closed P/L for today for those indicies set TRUE
@@ -560,10 +561,10 @@ go = function() {
   #summary(sd(ROC(perf2)))
   # profit factor for kOisufThresh = 20 with futures stops on 8/8 = 3.01
   # PF = 3.2 for thresh = -200 and DTR = 0.8
-} # go()
+#} # go()
 
 
-go()
+#go()
 
 
 

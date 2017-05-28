@@ -78,7 +78,7 @@ uiMaxParm = 6     # 600%
 uiMaxSkew = 1
 uiOptMult = 100
 
-underly  <- 72.05
+underly  <- 72.06
 riskfr   <- 0.0025
 dividend <- 0
 
@@ -286,97 +286,6 @@ fpriceErr = function(vweSQ) {
 # find error priced in cents? in terms of vega?
 fvwErr = function(normIV, estNormIV, vega, ivNVMult) {
   return((normIV-estNormIV)*vega*ivNVMult)
-}
-
-# Newton-Raphson root finding method for BS
-NewtonSolve <- function(x, Fprime, tol=1.e-7, maxsteps=25, verbose=FALSE){
-  
-  res <- Fprime(x)
-  if( abs(res$Fx)<tol ){
-    ## ... already got a root with 0 Newton steps
-    res$conv <- 0
-    return(res)
-  }
-  
-  if(verbose)
-    cat("Newton\n Step  x            Fx         DFx        NewtonCorrection\n")
-  
-  for(step in 1:maxsteps){
-    NewtonCorrection <- res$Fx / res$DFx
-    
-    ## update current guess for root
-    x   <- x - NewtonCorrection
-    
-    ## evaluate target function and its derivative
-    res <- Fprime(x)
-    
-    if(verbose)
-      cat(sprintf("%3d   % .3e   % .1e   % .1e   % .1e\n", step, x, res$Fx, res$Fx, NewtonCorrection))
-    
-    if( abs(res$Fx)<tol ){
-      ## got a root with "step" Newton steps
-      res$conv <- step
-      return(res)
-    }
-  }
-  ## no convergence
-  res$conv <- -1
-  res
-}
-
-# implementation of Black-Scholes using Newton-Raphson method
-ImpliedBSVol <- function(type, volGuess, Spot, Strike,
-                         riskfree, dividend, TTM,
-                         Cprice, verbose=FALSE){
-  
-  ## Evaluates target function whose root is to be found, as well as derivative
-  ## wrt sigma of target function.
-  ## Target function is the difference between the price obtained from
-  ## BS formula evaluated at vol sigma ("BSprice"),
-  ## minus actual call price to be inverted ("Cprice").
-  BSprimeCalls <- function(sigma){
-    sTTM    <- sqrt(TTM)
-    sigmaT  <- sigma*sTTM
-    d1      <- (log(Spot/Strike) + (riskfr - dividend + sigma^2/2)*TTM)/sigmaT
-    d2      <- d1 - sigmaT
-    Strikerf<- Strike*exp(-riskfree*TTM)
-    Spotdivd<- Spot  *exp(-dividend*TTM)
-    # calls
-    BSprice <- pnorm(d1)*Spotdivd - pnorm(d2)*Strikerf
-    d2prime <- d1/sigma
-    d1prime <- sTTM + d2prime
-    BSpriceprime <- d1prime*dnorm(d1)*Spotdivd - d2prime*dnorm(d2)*Strikerf
-    list(x  =sigma,
-         Fx =BSprice-Cprice,
-         DFx=BSpriceprime)
-  }
-  
-  BSprimePuts <- function(sigma){
-    sTTM    <- sqrt(TTM)
-    sigmaT  <- sigma*sTTM
-    d1      <- (log(Spot/Strike) + (riskfr - dividend + sigma^2/2)*TTM)/sigmaT
-    d2      <- d1 - sigmaT
-    Strikerf<- Strike*exp(-riskfree*TTM)
-    Spotdivd<- Spot  *exp(-dividend*TTM)
-    # puts
-    BSprice <- pnorm(-d2)*Strikerf - pnorm(-d1)*Spotdivd
-    d2prime <- d1/sigma
-    d1prime <- sTTM + d2prime
-    BSpriceprime <- d1prime*dnorm(d1)*Spotdivd - d2prime*dnorm(d2)*Strikerf
-    list(x  =sigma,
-         Fx =BSprice-Cprice,
-         DFx=BSpriceprime)
-  }
-  if (type == "call") {
-    res <- NewtonSolve(volGuess,BSprimeCalls,verbose=verbose)
-    res$x
-  } else if (type == "put") {
-    res <- NewtonSolve(volGuess,BSprimePuts,verbose=verbose)
-    res$x
-  }
-  else {
-    stop("neither put nor call specified")
-  }
 }
 
 # Set up calendar

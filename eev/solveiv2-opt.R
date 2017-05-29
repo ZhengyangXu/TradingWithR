@@ -74,25 +74,25 @@ setwd("~/Documents/TradingWithR/eev")
 # User inputs:
 uiMinIEV  = 0.011 # 1.1%
 uiMinA    = 0.011
-uiMaxParm = 3     # 600%
+uiMaxParm = 6     # 600%
 uiMaxSkew = 1
 uiOptMult = 100
 maxOVVSkew = 1
 
-underly  <- 72.06
+underly  <- 60.63
 riskfr   <- 0.0025
 dividend <- 0
 
-analysis_date   = "2015-07-30"
-first_u_date    = "2015-07-31"
-second_u_date   = "2015-07-31"
-next_earn_date  = "2015-07-30"
-next_ext_date   = "2015-08-07"
+analysis_date   = "2014-07-23"
+first_u_date    = "2014-07-24"
+second_u_date   = "2014-07-24"
+next_earn_date  = "2014-07-23"
+next_ext_date   = "2014-08-07"
 cal_begin       = "2014-01-01"
 cal_end         = "2019-01-01"
-datecode        = "20150730"
-timecode        = "1430"
-ticker          = "ea"
+datecode        = "20140723"
+timecode        = "1600"
+ticker          = "ua"
 
 uiHolidays = c('2014-01-01', '2014-01-20', '2014-02-17',
              '2014-04-18', '2014-05-26', '2014-07-03',
@@ -113,7 +113,7 @@ uiHolidays = c('2014-01-01', '2014-01-20', '2014-02-17',
 
 options_file = paste(ticker, datecode, timecode, '.csv',
                      sep='')
-stock_file   = paste(ticker, '.asc', sep='')
+stock_file   = paste(ticker, '.csv', sep='')
 mydata       = read.csv(options_file)
 myivprice    = read.csv(stock_file)
 myivprice    = myivprice[!is.na(myivprice$IV30),] # no NA iv
@@ -357,6 +357,8 @@ my.matrix$BD     = my.matrix$ND - my.matrix$ED
 # No options outside of 2 and 504 days
 my.matrix        = subset(my.matrix, ND >= 2 & ND <= 300)
 
+# No options outside of 4/96 deltas
+my.matrix        = subset(my.matrix, abs(Delta) > 4 & abs(Delta) < 96 )
 # No options without quotes
 my.matrix$avgp   = (my.matrix$Bid + my.matrix$Asked) / 2
 my.matrix        = my.matrix[!is.na(my.matrix$avgp),]
@@ -452,22 +454,23 @@ doStuff = function(my.opt) {
 #print(doStuff())
 
 results = list()
-max.tries = 50
+max.tries = 10
 for (i in 1:max.tries) {
   out.summary = list(finalrsq=0)
-  while (out.summary[["finalrsq"]] == 0) {
+  while (out.summary[["finalrsq"]] == 0 || out.summary[["finalrsq"]] < 0) {
     out = GenSA(lower = optLower, upper = optUpper, fn = doStuff,
                 control = list(max.time=5, temperature=10000))
     #out = GenSA(lower = optLower, upper = optUpper, fn = doStuff)
     #print(out[c("value", "par", "counts")])
     toOpt = out$par
     out.summary = optSummary(T)
-    #print(optSummary(T))
+    print(unlist(optSummary(T)))
   }
   results[[i]] = out$par[11]
 }
 #print(unlist(results))
 plot(1:max.tries, results, type='l')
+hist(unlist(results))
 
 
 

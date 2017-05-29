@@ -349,7 +349,10 @@ my.matrix$ED     = 1+floor(bizdays(next_earn_date,
 my.matrix$BD     = my.matrix$ND - my.matrix$ED
 
 # No options at expiration
-my.matrix        = my.matrix[my.matrix$ND != 1,]
+#my.matrix        = my.matrix[my.matrix$ND != 1,]
+
+# No options outside of 2 and 504 days
+my.matrix        = subset(my.matrix, ND >= 2 & ND <= 300)
 
 # No options without quotes
 my.matrix$avgp   = (my.matrix$Bid + my.matrix$Asked) / 2
@@ -384,61 +387,78 @@ for (i in 1:length(my.matrix$Strike.Price)) {
 
 # try out one of them there functions
 maxOVVSkew = 1
-my.matrix$OVVSkew = fOVVSkew(my.matrix$Strike.Price,
-                                  underly,
-                                  dividend,
-                                  my.matrix$ND/252,
-                                  maxOVVSkew)
+optSummary = function(opt.global.set = FALSE) {
+  # if (!opt.global.set)
+  #   toOpt = c(c(0.2738, -3.0751, -0.0076, 0.2691, -0.1371, -0.0684),
+  #             c(-0.0613, -0.0836, 0.0215, 0.6534),
+  #             1.1439)
+  my.matrix$OVVSkew = fOVVSkew(my.matrix$Strike.Price,
+                                    underly,
+                                    dividend,
+                                    my.matrix$ND/252,
+                                    maxOVVSkew)
+  
+  # Some rough testing using some shared setup from <RQL examples.R>
+  #toOpt[11] = 1.1439
+  my.matrix$NormIV = fNormIV(my.matrix$ND, 
+                                  my.matrix$ED, 
+                                  my.matrix$BD,
+                                  toOpt[11],
+                                  my.matrix$CalcIV)
+  # Ac, Bc, Cc, Ap, Bp, Cp, VSA, VSB, VCA, VCB, IEV
+  # [1] [2] [3] [4] [5] [6] [7]  [8]  [9]  [10]  [11]
+  #toOpt[7:10] = c(-0.0613, -0.0836, 0.0215, 0.6534)
+  my.matrix$slope = fSlopeParm(toOpt[7], toOpt[8], my.matrix$ND/252)
+  my.matrix$curve = fSlopeParm(toOpt[9], toOpt[10], my.matrix$ND/252)
+  
+  #toOpt[1:6] = c(0.2738, -3.0751, -0.0076, 0.2691, -0.1371, -0.0684)
+  my.matrix$atmniv[my.matrix$type == "call"] = fATMNIV(toOpt[1], 
+                                                       toOpt[2], 
+                                                       toOpt[3], 
+                     my.matrix$ND[my.matrix$type == "call"]/252)
+  
+  my.matrix$atmniv[my.matrix$type == "put"] = fATMNIV(toOpt[4],
+                                                      toOpt[5], 
+                                                      toOpt[6], 
+                     my.matrix$ND[my.matrix$type == "put"]/252)
+  
+  my.matrix$estniv = fEstNIV(my.matrix$slope, 
+                                  my.matrix$OVVSkew, 
+                                  my.matrix$curve,
+                                  my.matrix$atmniv)
+  
+  my.matrix$nivErr = my.matrix$NormIV - my.matrix$estniv
+  
+  my.matrix$nvivMult =  fIVNVMult(my.matrix$BD / my.matrix$ND)
+  
+  my.matrix$vwErr = fvwErr(my.matrix$NormIV,
+                                my.matrix$estniv,
+                                my.matrix$Vega,
+                                my.matrix$nvivMult)
+  
+  # next part doesn't match spreadsheet, but maybe it's something in fvwErr()
+  # no, see above, niv calcs aren't right due to bogus IEV test value
+  my.matrix$vwErr2 = my.matrix$vwErr^2
+  
+  #print(paste("Final price error: ", fpriceErr(my.matrix$vwErr2)))
+  
+  # sum(my.matrix$vwErr2)  #  4.049805
+  # mean(my.matrix$vwErr2) #  0.01488899
+  # max(my.matrix$nivErr)  #  0.1705075
+  # min(my.matrix$nivErr)  # -0.2535272
+  # max(my.matrix$vwErr)   #  0.2759597
+  # min(my.matrix$vwErr)   # -0.6587683
+  #print(paste("Final IEV: ", toOpt[11]))
+  if (sum((my.matrix$NormIV)^2) == 0)
+    rsq = 0
+  else
+    rsq = 1 - (sum((my.matrix$nivErr)^2) / sum((my.matrix$NormIV)^2))
+  #print(paste("R^2 value: ", rsq))
+  return(list(finalperr = fpriceErr(my.matrix$vwErr2),
+              finaliev  = toOpt[11],
+              finalrsq  = rsq))
+}
 
-# Some rough testing using some shared setup from <RQL examples.R>
-toOpt[11] = 1.1439
-my.matrix$NormIV = fNormIV(my.matrix$ND, 
-                                my.matrix$ED, 
-                                my.matrix$BD,
-                                toOpt[11],
-                                my.matrix$CalcIV)
-# Ac, Bc, Cc, Ap, Bp, Cp, VSA, VSB, VCA, VCB, IEV
-# [1] [2] [3] [4] [5] [6] [7]  [8]  [9]  [10]  [11]
-toOpt[7:10] = c(-0.0613, -0.0836, 0.0215, 0.6534)
-my.matrix$slope = fSlopeParm(toOpt[7], toOpt[8], my.matrix$ND/252)
-my.matrix$curve = fSlopeParm(toOpt[9], toOpt[10], my.matrix$ND/252)
 
-toOpt[1:6] = c(0.2738, -3.0751, -0.0076, 0.2691, -0.1371, -0.0684)
-my.matrix$atmniv[my.matrix$type == "call"] = fATMNIV(toOpt[1], 
-                                                     toOpt[2], 
-                                                     toOpt[3], 
-                   my.matrix$ND[my.matrix$type == "call"]/252)
 
-my.matrix$atmniv[my.matrix$type == "put"] = fATMNIV(toOpt[4],
-                                                    toOpt[5], 
-                                                    toOpt[6], 
-                   my.matrix$ND[my.matrix$type == "put"]/252)
-
-my.matrix$estniv = fEstNIV(my.matrix$slope, 
-                                my.matrix$OVVSkew, 
-                                my.matrix$curve,
-                                my.matrix$atmniv)
-
-my.matrix$nivErr = my.matrix$NormIV - my.matrix$estniv
-
-my.matrix$nvivMult =  fIVNVMult(my.matrix$BD / my.matrix$ND)
-
-my.matrix$vwErr = fvwErr(my.matrix$NormIV,
-                              my.matrix$estniv,
-                              my.matrix$Vega,
-                              my.matrix$nvivMult)
-
-# next part doesn't match spreadsheet, but maybe it's something in fvwErr()
-# no, see above, niv calcs aren't right due to bogus IEV test value
-my.matrix$vwErr2 = my.matrix$vwErr^2
-
-print(fpriceErr(my.matrix$vwErr2)) # typo with Aput not being used? 0.1220204
-# results with Aput used: 0.1202432
-
-sum(my.matrix$vwErr2)  #  4.049805
-mean(my.matrix$vwErr2) #  0.01488899
-max(my.matrix$nivErr)  #  0.1705075
-min(my.matrix$nivErr)  # -0.2535272
-max(my.matrix$vwErr)   #  0.2759597
-min(my.matrix$vwErr)   # -0.6587683
 

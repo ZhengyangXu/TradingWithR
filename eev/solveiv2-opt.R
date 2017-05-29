@@ -74,12 +74,12 @@ setwd("~/Documents/TradingWithR/eev")
 # User inputs:
 uiMinIEV  = 0.011 # 1.1%
 uiMinA    = 0.011
-uiMaxParm = 6     # 600%
+uiMaxParm = 3     # 600%
 uiMaxSkew = 1
 uiOptMult = 100
 maxOVVSkew = 1
 
-underly  <- 72.05
+underly  <- 72.06
 riskfr   <- 0.0025
 dividend <- 0
 
@@ -353,7 +353,9 @@ my.matrix$ED     = 1+floor(bizdays(next_earn_date,
 my.matrix$BD     = my.matrix$ND - my.matrix$ED
 
 # No options at expiration
-my.matrix        = my.matrix[my.matrix$ND != 1,]
+#my.matrix        = my.matrix[my.matrix$ND != 1,]
+# No options outside of 2 and 504 days
+my.matrix        = subset(my.matrix, ND >= 2 & ND <= 300)
 
 # No options without quotes
 my.matrix$avgp   = (my.matrix$Bid + my.matrix$Asked) / 2
@@ -439,23 +441,33 @@ doStuff = function(my.opt) {
   #print(fpriceErr(my.matrix$vwErr2))
   return(fpriceErr(my.matrix$vwErr2))
 }
+
+# these only work if you put in the final optimizer results from excel
 #sum(my.matrix$vwErr2)  #  4.049805
 #mean(my.matrix$vwErr2) #  0.01488899
 #max(my.matrix$nivErr)  #  0.1705075
 #min(my.matrix$nivErr)  # -0.2535272
 #max(my.matrix$vwErr)   #  0.2759597
 #min(my.matrix$vwErr)   # -0.6587683
-print(doStuff())
+#print(doStuff())
 
-out = GenSA(lower = optLower, upper = optUpper, fn = doStuff,
-            control = list(max.time=120, temperature=10000))
-print(out[c("value", "par", "counts")])
-print(out$trace.mat[c(1, (1:80)*1000),])
-
-
-
-
-
+results = list()
+max.tries = 50
+for (i in 1:max.tries) {
+  out.summary = list(finalrsq=0)
+  while (out.summary[["finalrsq"]] == 0) {
+    out = GenSA(lower = optLower, upper = optUpper, fn = doStuff,
+                control = list(max.time=5, temperature=10000))
+    #out = GenSA(lower = optLower, upper = optUpper, fn = doStuff)
+    #print(out[c("value", "par", "counts")])
+    toOpt = out$par
+    out.summary = optSummary(T)
+    #print(optSummary(T))
+  }
+  results[[i]] = out$par[11]
+}
+#print(unlist(results))
+plot(1:max.tries, results, type='l')
 
 
 

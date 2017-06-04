@@ -267,10 +267,18 @@ fOVVSkew = function(K, U, divadj, t, maxSkew) {
   return(myMaxSkew)
 }
 
+# Find the *normal* IV component given *aggregate* IV and *IEV*
 fNormIV = function(busDays, earnDays, normDays, IEV, calcIV) {
   # uses calculated IV which will end up calling NewtRaph / rootSolve function
   myZeroes= rep(0, length(busDays))
   return((pmax(busDays*calcIV^2-earnDays*IEV^2, myZeroes) / normDays)^(0.5))
+}
+
+# Find the *aggregate* IV component given *normal* IV and *IEV*
+fAggIV = function(busDays, earnDays, normDays, IEV, normIV) {
+  w.iev = earnDays / busDays
+  w.niv = normDays / busDays
+  return(((w.iev*IEV^2)+w.niv*normIV^2)^0.5)
 }
 
 fcalcIV = function(optType, midPrice, U, K, divadj, riskfr, t, avgIV) {
@@ -454,6 +462,7 @@ doStuff = function(my.opt) {
 #print(doStuff())
 
 results = list()
+full.results = list()
 max.tries = 10
 for (i in 1:max.tries) {
   out.summary = list(finalrsq=0)
@@ -467,13 +476,12 @@ for (i in 1:max.tries) {
     print(unlist(optSummary(T)))
   }
   results[[i]] = out$par[11]
+  full.results[[i]] = out$par
 }
 #print(unlist(results))
 plot(1:max.tries, results, type='l')
 hist(unlist(results))
 print(summary(unlist(results)))
-
-final.iev = median(unlist(results))
 
 # Black-Scholes Option Value
 # Call value is returned in values[1], put in values[2]
@@ -491,14 +499,17 @@ blackscholes <- function(S, X, rf, T, sigma, my.type) {
   }
 }
 
-TrueGreek = function(spot = underly, rfr = riskfr, iv.mod = 0) {
+TrueGreek = function(spot = underly, rfr = riskfr, iv.mod = 0, iv.replace = 0) {
+  my.iv = ifelse(iv.replace == 0, 
+                 my.matrix$CalcIV[j] + iv.mod,
+                 iv.replace)
   my.new.prices = list()
   for (j in 1:nrow(my.matrix))
     my.new.prices[[j]] = blackscholes(spot, 
                                      my.matrix$Strike.Price[j], 
                                      rfr,
                                      my.matrix$BD[j] / 252,
-                                     my.matrix$CalcIV[j] + iv.mod,
+                                     my.iv,
                                      my.matrix$type[j])
   my.new.prices
 }
@@ -508,6 +519,8 @@ TrueGreek = function(spot = underly, rfr = riskfr, iv.mod = 0) {
 # summary(x)
 # print(sum(x))
 midprice   = (my.matrix$Bid + my.matrix$Asked) / 2
+
+########## True Delta #############
 
 d.po.plus  = unlist(TrueGreek(spot = (underly+1))) # calls go up for +1
 d.po.minus = unlist(TrueGreek(spot = (underly-1))) # calls go down for -1
@@ -525,6 +538,8 @@ subset(new.df, BD == 7 & Strike.Price == 60)
 # that would explain why # EDs == 0
 # but maybe he's not really using 6 in the sheet, that's for something else?
 
+########## True Gamma #############
+
 g.po.plus  = unlist(TrueGreek(spot = (underly+2))) # calls go up for +1
 g.po.minus = unlist(TrueGreek(spot = (underly-2))) # calls go down for -1
 true.delt2 = (g.po.plus - g.po.minus) / 4 * 100
@@ -536,10 +551,50 @@ new.df = cbind.data.frame(new.df, g.po.minus)
 new.df = cbind.data.frame(new.df, true.delt2)
 new.df = cbind(data.frame(new.df, true.gamma))
 
-tev.plus  = unlist(TrueGreek(iv.mod = 0.01))
-tev.minus = unlist(TrueGreek(iv.mod = -0.01))
-true.earn.vega = (tev.plus - tev.minus) / 2
-new.df = cbind.data.frame(new.df, tev.plus, tev.minus, true.earn.vega)
+########## True Earnings Vega ##########
+
+agg.iv.plus  = fAggIV(foo$BD, 
+                      foo$ED, 
+                      foo$ND, 
+                      toOpt[11]+0.01, # IEV changes in aggregate but not normal!
+                      fNormIV(foo$BD, foo$ED, foo$ND, toOpt[11], foo$CalcIV))
+agg.iv.minus = fAggIV(foo$BD, 
+                      foo$ED, 
+                      foo$ND, 
+                      toOpt[11]-0.01, # IEV changes in aggregate but not normal!
+                      fNormIV(foo$BD, foo$ED, foo$ND, toOpt[11], foo$CalcIV))
+tev.po.plus  = unlist(TrueGreek(iv.replace = agg.iv.plus))
+tev.po.minus = unlist(TrueGreek(iv.replace = agg.iv.minus))
+true.earn.vega = (tev.po.plus - tev.po.minus) / 2
+new.df = cbind.data.frame(new.df, true.earn.vega)
+
+########## True Normal 30 Vega #############
+
+# Brian's curve fit function across a broad range of securities to 
+# deal with the fact that changes in ATM IV do not scale horizontally across
+# expirations. Short term options are affected more by changes in ATM IV than
+# longer term options. fNormMult(5/252) = 1.57 and fNormMult(1) = 0.219
+# argument ttm is in years
+# this function gives the multiplier when finding True Normal 30 Vega,
+# the component of vega that does not change due to earnings. BSOPM assumes
+# TN30 Vega is 1 for all expirations, which is empirically false
+#
+# in english, a 1 week ATM call option that sees an increase of 1% in ATM IV
+# should change in value by +57% more than what BSOPM says it should
+#
+# example: (blackscholes(100, 100, 0.0025, 5/252, 0.26, "call") - 
+#           blackscholes(100, 100, 0.0025, 5/252, 0.25, "call")) = 0.05618412
+# but:
+#          (blackscholes(100, 100, 0.0025, 5/252, 0.26, "call") - 
+#           blackscholes(100, 100, 0.0025, 5/252, 0.25, "call")) * 
+#           fNormMult(5/252) = 0.0881926
+# BSOPM says this call should only change by $0.056 but with this added 
+# multiplier (and in the real world) we should expect to see it change by $0.088
+fNormMult = function(ttm) {
+  return(1+(-0.780854818)*(1-exp(-8.629216*(ttm-1/12))))
+}
+
+
 
 
 

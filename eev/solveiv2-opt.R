@@ -314,9 +314,9 @@ my.cal = create.calendar(holidays = uiHolidays,
 #  fpriceErr(
 #    vweSQ(
 #       vwErr(
-#         fNormIV(m$BD, 
+#         fNormIV(m$ND, 
 #                 m$ED, 
-#                 m$ND, 
+#                 m$BD, 
 #                 IEV, 
 #                 fcalcIV(...)), 
 #         fEstNIV(...), 
@@ -342,7 +342,7 @@ my.matrix$expISO = as.Date(as.character(my.matrix$Exp.Date),
                                 "%y%m%d")
 
 # Calculate total days
-my.matrix$ND     = bizdays(analysis_date, 
+my.matrix$BD     = bizdays(analysis_date, 
                                 my.matrix$expISO, 
                                 my.cal)
 
@@ -350,12 +350,12 @@ my.matrix$ND     = bizdays(analysis_date,
 my.matrix$ED     = 1+floor(bizdays(next_earn_date, 
                                         my.matrix$expISO,
                                         my.cal) / 63)
-my.matrix$BD     = my.matrix$ND - my.matrix$ED
+my.matrix$ND     = my.matrix$BD - my.matrix$ED
 
 # No options at expiration
-#my.matrix        = my.matrix[my.matrix$ND != 1,]
+#my.matrix        = my.matrix[my.matrix$BD != 1,]
 # No options outside of 2 and 504 days
-my.matrix        = subset(my.matrix, ND >= 2 & ND <= 300)
+my.matrix        = subset(my.matrix, BD >= 2 & BD <= 300)
 
 # No options outside of 4/96 deltas
 my.matrix        = subset(my.matrix, abs(Delta) > 4 & abs(Delta) < 96 )
@@ -377,7 +377,7 @@ for (i in 1:length(my.matrix$Strike.Price)) {
                  my.matrix$Strike.Price[i],
                  riskfr,
                  dividend,
-                 my.matrix$ND[i]/252,
+                 my.matrix$BD[i]/252,
                  my.matrix$avgp[i],
                  verbose=FALSE)
   #     AmericanOptionImpliedVolatility(my.matrix$type[i], 
@@ -386,7 +386,7 @@ for (i in 1:length(my.matrix$Strike.Price)) {
   #                                     my.matrix$Strike.Price[i],
   #                                     dividend, 
   #                                     riskfr, 
-  #                                     my.matrix$ND[i]/252,
+  #                                     my.matrix$BD[i]/252,
   #                                     avg.iv)
 }
 
@@ -396,32 +396,32 @@ doStuff = function(my.opt) {
   my.matrix$OVVSkew = fOVVSkew(my.matrix$Strike.Price,
                                underly,
                                dividend,
-                               my.matrix$ND/252,
+                               my.matrix$BD/252,
                                maxOVVSkew)
   
   # Some rough testing using some shared setup from <RQL examples.R>
   #my.opt[11] = 1.1439
-  my.matrix$NormIV = fNormIV(my.matrix$ND, 
+  my.matrix$NormIV = fNormIV(my.matrix$BD, 
                              my.matrix$ED, 
-                             my.matrix$BD,
+                             my.matrix$ND,
                              my.opt[11],
                              my.matrix$CalcIV)
   # Ac, Bc, Cc, Ap, Bp, Cp, VSA, VSB, VCA, VCB, IEV
   # [1] [2] [3] [4] [5] [6] [7]  [8]  [9]  [10]  [11]
   #my.opt[7:10] = c(-0.0613, -0.0836, 0.0215, 0.6534)
-  my.matrix$slope = fSlopeParm(my.opt[7], my.opt[8], my.matrix$ND/252)
-  my.matrix$curve = fSlopeParm(my.opt[9], my.opt[10], my.matrix$ND/252)
+  my.matrix$slope = fSlopeParm(my.opt[7], my.opt[8], my.matrix$BD/252)
+  my.matrix$curve = fSlopeParm(my.opt[9], my.opt[10], my.matrix$BD/252)
   
   #my.opt[1:6] = c(0.2738, -3.0751, -0.0076, 0.2691, -0.1371, -0.0684)
   my.matrix$atmniv[my.matrix$type == "call"] = fATMNIV(my.opt[1], 
                                                        my.opt[2], 
                                                        my.opt[3], 
-                     my.matrix$ND[my.matrix$type == "call"]/252)
+                     my.matrix$BD[my.matrix$type == "call"]/252)
   
   my.matrix$atmniv[my.matrix$type == "put"] = fATMNIV(my.opt[4],
                                                       my.opt[5], 
                                                       my.opt[6], 
-                     my.matrix$ND[my.matrix$type == "put"]/252)
+                     my.matrix$BD[my.matrix$type == "put"]/252)
   
   my.matrix$estniv = fEstNIV(my.matrix$slope, 
                              my.matrix$OVVSkew, 
@@ -430,7 +430,7 @@ doStuff = function(my.opt) {
   
   my.matrix$nivErr = my.matrix$NormIV - my.matrix$estniv
   
-  my.matrix$nvivMult =  fIVNVMult(my.matrix$BD / my.matrix$ND)
+  my.matrix$nvivMult =  fIVNVMult(my.matrix$ND / my.matrix$BD)
   
   my.matrix$vwErr = fvwErr(my.matrix$NormIV,
                            my.matrix$estniv,
@@ -497,7 +497,7 @@ TrueGreek = function(spot = underly, rfr = riskfr, iv.mod = 0) {
     my.new.prices[[j]] = blackscholes(spot, 
                                      my.matrix$Strike.Price[j], 
                                      rfr,
-                                     my.matrix$ND[j] / 252,
+                                     my.matrix$BD[j] / 252,
                                      my.matrix$CalcIV[j] + iv.mod,
                                      my.matrix$type[j])
   my.new.prices
@@ -517,7 +517,7 @@ true.delta = (d.po.plus - d.po.minus) / 2 * 100
 new.df = cbind.data.frame(my.matrix, d.po.plus)
 new.df = cbind.data.frame(new.df, d.po.minus)
 new.df = cbind.data.frame(new.df, true.delta)
-subset(new.df, ND == 7 & Strike.Price == 60)
+subset(new.df, BD == 7 & Strike.Price == 60)
 
 # Brian is using 7 / 252 during IEV solving, but using 6 / 252 as the 
 # time to expiration for true greeks? 'Greeks' tab, J37
@@ -544,7 +544,7 @@ new.df = cbind.data.frame(new.df, tev.plus, tev.minus, true.earn.vega)
 
 
 
-subset(new.df, ND == 7 & Strike.Price == 60)
+subset(new.df, BD == 7 & Strike.Price == 60)
 
 
 

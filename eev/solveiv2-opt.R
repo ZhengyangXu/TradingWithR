@@ -457,7 +457,7 @@ results = list()
 max.tries = 10
 for (i in 1:max.tries) {
   out.summary = list(finalrsq=0)
-  while (out.summary[["finalrsq"]] == 0 || out.summary[["finalrsq"]] < 0) {
+  while (out.summary[["finalrsq"]] == 0 || out.summary[["finalrsq"]] < 0.7) {
     out = GenSA(lower = optLower, upper = optUpper, fn = doStuff,
                 control = list(max.time=5, temperature=10000))
     #out = GenSA(lower = optLower, upper = optUpper, fn = doStuff)
@@ -471,7 +471,35 @@ for (i in 1:max.tries) {
 #print(unlist(results))
 plot(1:max.tries, results, type='l')
 hist(unlist(results))
+print(summary(unlist(results)))
 
+final.iev = median(unlist(results))
+
+# Black-Scholes Option Value
+# Call value is returned in values[1], put in values[2]
+# spot, strike, risk free rate, time until expiration, IV, type
+blackscholes <- function(S, X, rf, T, sigma, my.type) {
+  d1 <- (log(S/X)+(rf+sigma^2/2)*T)/(sigma*sqrt(T))
+  d2 <- d1 - sigma * sqrt(T)
+  
+  if (my.type == "call") {
+    return (S*pnorm(d1) - X*exp(-rf*T)*pnorm(d2))
+  } else if (my.type == "put") {
+    return(X*exp(-rf*T) * pnorm(-d2) - S*pnorm(-d1))
+  } else {
+    return(NULL)
+  }
+}
+
+my.new.prices = list()
+
+for (j in 1:nrow(my.matrix))
+  my.new.prices[[j]] = blackscholes(underly, 
+                                   my.matrix$Strike.Price[j], 
+                                   riskfr,
+                                   my.matrix$ND[j] / 252,
+                                   my.matrix$CalcIV[j],
+                                   my.matrix$type[j])
 
 
 

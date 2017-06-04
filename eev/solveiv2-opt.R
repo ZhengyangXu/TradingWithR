@@ -402,10 +402,10 @@ doStuff = function(my.opt) {
   # Some rough testing using some shared setup from <RQL examples.R>
   #my.opt[11] = 1.1439
   my.matrix$NormIV = fNormIV(my.matrix$ND, 
-                                  my.matrix$ED, 
-                                  my.matrix$BD,
-                                  my.opt[11],
-                                  my.matrix$CalcIV)
+                             my.matrix$ED, 
+                             my.matrix$BD,
+                             my.opt[11],
+                             my.matrix$CalcIV)
   # Ac, Bc, Cc, Ap, Bp, Cp, VSA, VSB, VCA, VCB, IEV
   # [1] [2] [3] [4] [5] [6] [7]  [8]  [9]  [10]  [11]
   #my.opt[7:10] = c(-0.0613, -0.0836, 0.0215, 0.6534)
@@ -491,17 +491,60 @@ blackscholes <- function(S, X, rf, T, sigma, my.type) {
   }
 }
 
-my.new.prices = list()
+TrueGreek = function(spot = underly, rfr = riskfr, iv.mod = 0) {
+  my.new.prices = list()
+  for (j in 1:nrow(my.matrix))
+    my.new.prices[[j]] = blackscholes(spot, 
+                                     my.matrix$Strike.Price[j], 
+                                     rfr,
+                                     my.matrix$ND[j] / 252,
+                                     my.matrix$CalcIV[j] + iv.mod,
+                                     my.matrix$type[j])
+  my.new.prices
+}
 
-for (j in 1:nrow(my.matrix))
-  my.new.prices[[j]] = blackscholes(underly, 
-                                   my.matrix$Strike.Price[j], 
-                                   riskfr,
-                                   my.matrix$ND[j] / 252,
-                                   my.matrix$CalcIV[j],
-                                   my.matrix$type[j])
+# check results against computed prices (should be on scale of ~1e-12 - 1e-15)
+# x = (my.matrix$Bid + my.matrix$Asked) / 2 - unlist(TrueGreek())
+# summary(x)
+# print(sum(x))
+midprice   = (my.matrix$Bid + my.matrix$Asked) / 2
+
+d.po.plus  = unlist(TrueGreek(spot = (underly+1))) # calls go up for +1
+d.po.minus = unlist(TrueGreek(spot = (underly-1))) # calls go down for -1
+true.delta = (d.po.plus - d.po.minus) / 2 * 100
+#plot(my.matrix$Strike.Price, my.matrix$Delta/100 - true.delta)
+
+new.df = cbind.data.frame(my.matrix, d.po.plus)
+new.df = cbind.data.frame(new.df, d.po.minus)
+new.df = cbind.data.frame(new.df, true.delta)
+subset(new.df, ND == 7 & Strike.Price == 60)
+
+# Brian is using 7 / 252 during IEV solving, but using 6 / 252 as the 
+# time to expiration for true greeks? 'Greeks' tab, J37
+# it's because it's really modeling the price after a day as well?
+# that would explain why # EDs == 0
+# but maybe he's not really using 6 in the sheet, that's for something else?
+
+g.po.plus  = unlist(TrueGreek(spot = (underly+2))) # calls go up for +1
+g.po.minus = unlist(TrueGreek(spot = (underly-2))) # calls go down for -1
+true.delt2 = (g.po.plus - g.po.minus) / 4 * 100
+true.gamma = (true.delta - true.delt2) / 2
+#plot(my.matrix$Strike.Price, my.matrix$Gamma/100 - true.gamma)
+
+new.df = cbind.data.frame(new.df, g.po.plus)
+new.df = cbind.data.frame(new.df, g.po.minus)
+new.df = cbind.data.frame(new.df, true.delt2)
+new.df = cbind(data.frame(new.df, true.gamma))
+
+tev.plus  = unlist(TrueGreek(iv.mod = 0.01))
+tev.minus = unlist(TrueGreek(iv.mod = -0.01))
+true.earn.vega = (tev.plus - tev.minus) / 2
+new.df = cbind.data.frame(new.df, tev.plus, tev.minus, true.earn.vega)
 
 
+
+
+subset(new.df, ND == 7 & Strike.Price == 60)
 
 
 

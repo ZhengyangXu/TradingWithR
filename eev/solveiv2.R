@@ -401,10 +401,10 @@ optSummary = function(opt.global.set = FALSE) {
   # Some rough testing using some shared setup from <RQL examples.R>
   #toOpt[11] = 1.1439
   my.matrix$NormIV = fNormIV(my.matrix$ND, 
-                                  my.matrix$ED, 
-                                  my.matrix$BD,
-                                  toOpt[11],
-                                  my.matrix$CalcIV)
+                             my.matrix$ED, 
+                             my.matrix$BD,
+                             toOpt[11],
+                             my.matrix$CalcIV)
   # Ac, Bc, Cc, Ap, Bp, Cp, VSA, VSB, VCA, VCB, IEV
   # [1] [2] [3] [4] [5] [6] [7]  [8]  [9]  [10]  [11]
   #toOpt[7:10] = c(-0.0613, -0.0836, 0.0215, 0.6534)

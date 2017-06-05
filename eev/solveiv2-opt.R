@@ -499,17 +499,21 @@ blackscholes <- function(S, X, rf, T, sigma, my.type) {
   }
 }
 
-TrueGreek = function(spot = underly, rfr = riskfr, iv.mod = 0, iv.replace = 0) {
-  my.iv = ifelse(iv.replace == 0, 
-                 my.matrix$CalcIV[j] + iv.mod,
-                 iv.replace)
+TrueGreek = function(spot = underly, rfr = riskfr, 
+                     iv.mod = 0, iv.replace = NULL) {
+  if(length(iv.replace) == 0) {
+    my.iv = my.matrix$CalcIV + rep(iv.mod, nrow(my.matrix))
+  } else {
+    my.iv = iv.replace
+  }
+  
   my.new.prices = list()
   for (j in 1:nrow(my.matrix))
     my.new.prices[[j]] = blackscholes(spot, 
                                      my.matrix$Strike.Price[j], 
                                      rfr,
                                      my.matrix$BD[j] / 252,
-                                     my.iv,
+                                     my.iv[j],
                                      my.matrix$type[j])
   my.new.prices
 }
@@ -553,16 +557,24 @@ new.df = cbind(data.frame(new.df, true.gamma))
 
 ########## True Earnings Vega ##########
 
-agg.iv.plus  = fAggIV(foo$BD, 
-                      foo$ED, 
-                      foo$ND, 
+agg.iv.plus  = fAggIV(new.df$BD, 
+                      new.df$ED, 
+                      new.df$ND, 
                       toOpt[11]+0.01, # IEV changes in aggregate but not normal!
-                      fNormIV(foo$BD, foo$ED, foo$ND, toOpt[11], foo$CalcIV))
-agg.iv.minus = fAggIV(foo$BD, 
-                      foo$ED, 
-                      foo$ND, 
+                      fNormIV(new.df$BD, 
+                              new.df$ED, 
+                              new.df$ND, 
+                              toOpt[11], 
+                              new.df$CalcIV))
+agg.iv.minus = fAggIV(new.df$BD, 
+                      new.df$ED, 
+                      new.df$ND, 
                       toOpt[11]-0.01, # IEV changes in aggregate but not normal!
-                      fNormIV(foo$BD, foo$ED, foo$ND, toOpt[11], foo$CalcIV))
+                      fNormIV(new.df$BD, 
+                              new.df$ED, 
+                              new.df$ND, 
+                              toOpt[11], 
+                              new.df$CalcIV))
 tev.po.plus  = unlist(TrueGreek(iv.replace = agg.iv.plus))
 tev.po.minus = unlist(TrueGreek(iv.replace = agg.iv.minus))
 true.earn.vega = (tev.po.plus - tev.po.minus) / 2
@@ -594,13 +606,111 @@ fNormMult = function(ttm) {
   return(1+(-0.780854818)*(1-exp(-8.629216*(ttm-1/12))))
 }
 
+# re-estimate skew parameters with ATM+0.01
+# re-calculate normal IV across matrix
+# multiply new normal IV by multiplier
+# use aggregate formula to get new agg IV (IEV stays constant)
+# use BSOPM to calculate new option prices 
+# diff the prices, divide by 2
 
+new.df$OVVSkew = fOVVSkew(new.df$Strike.Price,
+                             underly,
+                             dividend,
+                          new.df$BD/252,
+                             maxOVVSkew)
+# Ac, Bc, Cc, Ap, Bp, Cp, VSA, VSB, VCA, VCB, IEV
+# [1] [2] [3] [4] [5] [6] [7]  [8]  [9]  [10]  [11]
+new.df$slope = fSlopeParm(toOpt[7], toOpt[8], new.df$BD/252)
+new.df$curve = fSlopeParm(toOpt[9], toOpt[10], new.df$BD/252)
 
+new.df$atmniv[new.df$type == "call"] = fATMNIV(toOpt[1], 
+                                               toOpt[2], 
+                                               toOpt[3], 
+                   new.df$BD[new.df$type == "call"]/252)
 
+new.df$atmniv[new.df$type == "put"] = fATMNIV(toOpt[4],
+                                              toOpt[5], 
+                                              toOpt[6], 
+                   new.df$BD[new.df$type == "put"]/252)
 
+new.df$estniv.p1 = fEstNIV(new.df$slope, 
+                           new.df$OVVSkew, 
+                           new.df$curve,
+                           new.df$atmniv+0.01)
+new.df$estniv.m1 = fEstNIV(new.df$slope, 
+                           new.df$OVVSkew, 
+                           new.df$curve,
+                           new.df$atmniv-0.01)
+new.df$tn30v.agg.iv.p1 = fAggIV(new.df$BD, new.df$ED, new.df$ND, toOpt[11],
+                                new.df$estniv.p1)
+new.df$tn30v.agg.iv.m1 = fAggIV(new.df$BD, new.df$ED, new.df$ND, toOpt[11],
+                                new.df$estniv.m1)
 
-subset(new.df, BD == 7 & Strike.Price == 60)
+new.df$tn30v.po.p1  = unlist(TrueGreek(iv.replace = new.df$tn30v.agg.iv.p1))
+new.df$tn30v.po.m1  = unlist(TrueGreek(iv.replace = new.df$tn30v.agg.iv.m1))
 
+new.df$tn30v = (new.df$tn30v.po.p1 - 
+                  new.df$tn30v.po.m1)*fNormMult(new.df$BD/252)/2
 
+############ True 30 Vega ########
+
+# combine true earnings vega + true normal 30 vega, literally just addition
+# not sure where it's used  yet
+
+############ True Theta ##########
+
+# it's just
+# blackscholes(underly, 60, riskfr, 7/252, 0.2654666, "call") - 2.675
+# not any of the rest of this shit
+# the BD used in TrueGreek is key, it's 7 not 6
+
+# new.df$tt.agg.iv.m1 = fAggIV(new.df$BD,
+#                              new.df$ED-1,
+#                              new.df$ND+1,
+#                              toOpt[11],
+#                              fNormIV(new.df$BD,
+#                                      new.df$ED-1,
+#                                      new.df$ND+1,
+#                                      toOpt[11],
+#                                      new.df$CalcIV))
+# tt.agg.iv.m1 = list()
+# for (i in 1:nrow(new.df)) {
+#   tt.agg.iv.m1[[i]] = ImpliedBSVol(new.df$type[i],
+#                                    avg.iv,
+#                                    underly,
+#                                    new.df$Strike.Price[i],
+#                                    riskfr,
+#                                    dividend,
+#                                    new.df$BD[i]/252,
+#                                    new.df$avgp[i],
+#                                    verbose=FALSE)
+# }
+# new.df$tt.agg.iv.m1 = unlist(tt.agg.iv.m1)
+new.df$tt.po.m1 = unlist(TrueGreek(iv.replace = new.df$atmniv))
+new.df$true.theta = new.df$tt.po.m1 - new.df$avgp
+
+######### True Rho ###########
+
+new.df$tr.po.p1 = unlist(TrueGreek(rfr = riskfr + 0.001))
+new.df$tr.po.m1 = unlist(TrueGreek(rfr = riskfr - 0.001))
+new.df$true.rho = (new.df$tr.po.p1 - new.df$tr.po.m1) / .2
+
+subset(new.df, BD == 7 & Strike.Price == 60 & type == "call")
+
+######### Calculate values for user date ############
+# don't forget to add / filter options further for simulation?
+# How in the hell?
+#   0.  Construct the prices to iterate over
+#       Then for each price:
+#   1.  grab the estimate normal IV from fEstNIV
+#   2.  grab the IEV from toOpt[11]
+#   3.  compute aggregate IV with fAggIV (this is new cause spot price changed)
+#   4.  add effects of:
+#         true delta (know the diff between orig spot and new spot price, or is
+#                     this to be taken care of by gamma?)
+#         true gamma (change delta every dollar? or find new delta w/ gamma?)
+#         true vega (know the diff between orig and new agg IV)
+#         true theta (know the days, so multiply by days until U date)
+#         ignore true rho?
 
 

@@ -722,10 +722,10 @@ tg.ex[["slope"]]   = fSlopeParm(toOpt[7], toOpt[8], 6/252)
 tg.ex[["curve"]]   = fSlopeParm(toOpt[9], toOpt[10], 6/252)
 tg.ex[["skew"]]    = fOVVSkew(60, 68.07, 0, 6/252, uiMaxSkew)
 tg.ex[["estniv"]]  = fEstNIV(tg.ex$slope, tg.ex$skew, tg.ex$curve, tg.ex$atmniv)
-tg.ex[["aggiv"]]   = fAggIV(6, 0, 6, toOpt[11], tg.ex$estniv)
+tg.ex[["aggiv"]]   = fAggIV(6, 0, 6, toOpt[11], tg.ex$estniv) # same for ED=0
 tg.ex[["t.delta"]] = 0.5617496
 tg.ex[["t.gamma"]] = 0.06966376
-tg.ex[["t.vega"]]  = 0.01335727 + 0.02321608
+tg.ex[["t.vega"]]  = 0.01335727 + 0.02321608 # TEV + TN30V ?
 tg.ex[["t.theta"]] = -1.263507
 tg.ex[["t.rho"]]   = 0.008725746
 
@@ -736,19 +736,28 @@ new.underly = 68.07
 # given dte
 fTrueOptPrice = function(underly, new.underly, 
                          td, tg, tv, tt, tr=0,
-                         estniv, new.estniv,
-                         dte) {
+                         estniv, aggiv,
+                         days) {
   price.diff   = new.underly - underly
   price.effect = ((price.diff * tg) + td) * price.diff
-  vol.diff     = (new.estniv - estniv) * 100 # true vega based on whole %s
+  vol.diff     = (aggiv - estniv) * 100 # true vega based on whole %s
   vol.effect   = tv * vol.diff
-  theta.effect = tt * dte
+  theta.effect = tt * days
   # ignoring rho for now
   op.diff      = price.effect + vol.effect + theta.effect
   op.diff
   
 }
 
-# fTrueOptPrice(underly, new.underly, tg.ex$t.delta, tg.ex$t.gamma, tg.ex$t.vega, tg.ex$t.theta, estniv = tg.ex$atmniv, new.estniv = tg.ex$estniv, dte = 1)+2.675
+# fTrueOptPrice(underly, new.underly, 
+#               tg.ex$t.delta, tg.ex$t.gamma, tg.ex$t.vega, tg.ex$t.theta, 
+#               estniv = tg.ex$atmniv, aggiv = tg.ex$aggiv, 
+#               days = 1) + 2.675
 # [1] 9.972975
 # way overstated for now? I think the sheet says 8.088
+# TODO: set toOpt equal to sheet parameters and re-run my shit
+
+
+
+
+

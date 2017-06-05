@@ -621,7 +621,7 @@ new.df$OVVSkew = fOVVSkew(new.df$Strike.Price,
 # Ac, Bc, Cc, Ap, Bp, Cp, VSA, VSB, VCA, VCB, IEV
 # [1] [2] [3] [4] [5] [6] [7]  [8]  [9]  [10]  [11]
 new.df$slope = fSlopeParm(toOpt[7], toOpt[8], new.df$BD/252)
-new.df$curve = fSlopeParm(toOpt[9], toOpt[10], new.df$BD/252)
+new.df$curve = fSlopeParm(toOpt[9], toOpt[10], new.df$BD/252) # not a bug
 
 new.df$atmniv[new.df$type == "call"] = fATMNIV(toOpt[1], 
                                                toOpt[2], 
@@ -703,8 +703,10 @@ subset(new.df, BD == 7 & Strike.Price == 60 & type == "call")
 #   0.  Construct the prices to iterate over
 #       Then for each price:
 #   1.  grab the estimate normal IV from fEstNIV
-#   2.  grab the IEV from toOpt[11]
-#   3.  compute aggregate IV with fAggIV (this is new cause spot price changed)
+#       make sure you decrement t in the fATMNIV() call by days until U date
+#       make sure you use this new potential underlying price in fOVVSkew()
+#   2.  grab the IEV from toOpt[11] -- (short term options, it won't matter)
+#   3.  compute aggregate IV with fAggIV (is this CalcIV? or very close?)
 #   4.  add effects of:
 #         true delta (know the diff between orig spot and new spot price, or is
 #                     this to be taken care of by gamma?)
@@ -713,4 +715,40 @@ subset(new.df, BD == 7 & Strike.Price == 60 & type == "call")
 #         true theta (know the days, so multiply by days until U date)
 #         ignore true rho?
 
+# we try example of the 60 call w/ 7 days left 1 day later @ 68.07
+tg.ex = list()
+tg.ex[["atmniv"]]  = fATMNIV(toOpt[1], toOpt[2], toOpt[3], 6/252)
+tg.ex[["slope"]]   = fSlopeParm(toOpt[7], toOpt[8], 6/252)
+tg.ex[["curve"]]   = fSlopeParm(toOpt[9], toOpt[10], 6/252)
+tg.ex[["skew"]]    = fOVVSkew(60, 68.07, 0, 6/252, uiMaxSkew)
+tg.ex[["estniv"]]  = fEstNIV(tg.ex$slope, tg.ex$skew, tg.ex$curve, tg.ex$atmniv)
+tg.ex[["aggiv"]]   = fAggIV(6, 0, 6, toOpt[11], tg.ex$estniv)
+tg.ex[["t.delta"]] = 0.5617496
+tg.ex[["t.gamma"]] = 0.06966376
+tg.ex[["t.vega"]]  = 0.01335727 + 0.02321608
+tg.ex[["t.theta"]] = -1.263507
+tg.ex[["t.rho"]]   = 0.008725746
 
+new.underly = 68.07
+
+# calculate the *change* in option price given true greeks
+# result should be added to original price to find expected price after 
+# given dte
+fTrueOptPrice = function(underly, new.underly, 
+                         td, tg, tv, tt, tr=0,
+                         estniv, new.estniv,
+                         dte) {
+  price.diff   = new.underly - underly
+  price.effect = ((price.diff * tg) + td) * price.diff
+  vol.diff     = (new.estniv - estniv) * 100 # true vega based on whole %s
+  vol.effect   = tv * vol.diff
+  theta.effect = tt * dte
+  # ignoring rho for now
+  op.diff      = price.effect + vol.effect + theta.effect
+  op.diff
+  
+}
+
+# fTrueOptPrice(underly, new.underly, tg.ex$t.delta, tg.ex$t.gamma, tg.ex$t.vega, tg.ex$t.theta, estniv = tg.ex$atmniv, new.estniv = tg.ex$estniv, dte = 1)+2.675
+# [1] 9.972975
+# way overstated for now? I think the sheet says 8.088

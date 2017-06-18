@@ -278,7 +278,7 @@ fNormIV = function(busDays, earnDays, normDays, IEV, calcIV) {
 fAggIV = function(busDays, earnDays, normDays, IEV, normIV) {
   w.iev = earnDays / busDays
   w.niv = normDays / busDays
-  return(((w.iev*IEV^2)+w.niv*normIV^2)^0.5)
+  return(((w.iev*IEV^2)+(w.niv*normIV^2))^0.5)
 }
 
 fcalcIV = function(optType, midPrice, U, K, divadj, riskfr, t, avgIV) {
@@ -483,6 +483,12 @@ plot(1:max.tries, results, type='l')
 hist(unlist(results))
 print(summary(unlist(results)))
 
+# repro with values shipped in book
+toOpt = c(0.265162712164448, 2.99783601119151, 0.00670523714905462,
+          0.323365906648514, -0.0381381150533562, 6,
+          0.0255628691868997, -0.0574220811250519,
+          0.211917788619586, -0.101359387380082,
+          1.37201568790316)
 # Black-Scholes Option Value
 # Call value is returned in values[1], put in values[2]
 # spot, strike, risk free rate, time until expiration, IV, type
@@ -536,12 +542,6 @@ new.df = cbind.data.frame(new.df, d.po.minus)
 new.df = cbind.data.frame(new.df, true.delta)
 subset(new.df, BD == 7 & Strike.Price == 60)
 
-# Brian is using 7 / 252 during IEV solving, but using 6 / 252 as the 
-# time to expiration for true greeks? 'Greeks' tab, J37
-# it's because it's really modeling the price after a day as well?
-# that would explain why # EDs == 0
-# but maybe he's not really using 6 in the sheet, that's for something else?
-
 ########## True Gamma #############
 
 g.po.plus  = unlist(TrueGreek(spot = (underly+2))) # calls go up for +1
@@ -556,7 +556,8 @@ new.df = cbind.data.frame(new.df, true.delt2)
 new.df = cbind(data.frame(new.df, true.gamma))
 
 ########## True Earnings Vega ##########
-
+# Aggregate IV changes due to the change in IEV, but not the normal IV,
+# because by definition we are holding that constant. 
 agg.iv.plus  = fAggIV(new.df$BD, 
                       new.df$ED, 
                       new.df$ND, 
@@ -686,7 +687,7 @@ new.df$tn30v = (new.df$tn30v.po.p1 -
 #                                    verbose=FALSE)
 # }
 # new.df$tt.agg.iv.m1 = unlist(tt.agg.iv.m1)
-new.df$tt.po.m1 = unlist(TrueGreek(iv.replace = new.df$atmniv))
+new.df$tt.po.m1 = unlist(TrueGreek(iv.replace = new.df$estniv))
 new.df$true.theta = new.df$tt.po.m1 - new.df$avgp
 
 ######### True Rho ###########
@@ -707,13 +708,8 @@ subset(new.df, BD == 7 & Strike.Price == 60 & type == "call")
 #       make sure you use this new potential underlying price in fOVVSkew()
 #   2.  grab the IEV from toOpt[11] -- (short term options, it won't matter)
 #   3.  compute aggregate IV with fAggIV (is this CalcIV? or very close?)
-#   4.  add effects of:
-#         true delta (know the diff between orig spot and new spot price, or is
-#                     this to be taken care of by gamma?)
-#         true gamma (change delta every dollar? or find new delta w/ gamma?)
-#         true vega (know the diff between orig and new agg IV)
-#         true theta (know the days, so multiply by days until U date)
-#         ignore true rho?
+#   4.  Compute new option price with new price from (0) and new aggIV from (3)
+#       using BSOPM. True greeks come later when looking at total position?
 
 # we try example of the 60 call w/ 7 days left 1 day later @ 68.07
 tg.ex = list()
@@ -731,6 +727,7 @@ tg.ex[["t.rho"]]   = 0.008725746
 
 new.underly = 68.07
 
+# pretty sure this function is wrong and worthless:
 # calculate the *change* in option price given true greeks
 # result should be added to original price to find expected price after 
 # given dte
@@ -757,7 +754,53 @@ fTrueOptPrice = function(underly, new.underly,
 # way overstated for now? I think the sheet says 8.088
 # TODO: set toOpt equal to sheet parameters and re-run my shit
 
-
-
-
-
+# Thoughts
+# Things that match:
+#   True Earnings Vega
+#   True Rho (cause it's BS Rho without an actual expected rate change)
+#   
+# BS Delta in the sheet is calculated with 7/252 days, CalcIV value, and other
+# stuff from the TZero tab. So true delta should be calculated with the same.
+# HOW DOES THE CALCIV VALUE GET THE PRICE CHANGE INTEGRATED IN?!
+#   a) use ATM IV (since it would by definition be ATM for a price change?)
+#       aggIV    =  0.5739678
+#       +1.delta =  blackscholes(underly+1, 60, 0.0025, 7/252, 0.5739678, "call")-blackscholes(underly, 60, 0.0025, 7/252, 0.5739678, "call")
+#                   0.5960701
+#       expected =  0.59270
+#       -1.delta = -0.5282899
+#       expected = -0.51899
+#   b) use ATM IV on new price but calcIV on old price? 0.5528924
+#   c) use ATM IV on new price but estimated IV on old price? 0.5971447
+#   d) use estimated IV on new price and calcIV on old price? 0.5518446
+#       ^ this one makes the most intuitive sense but is way low
+#   e) no change in IV only underlying (use CalcIV): 0.5950201
+#   f) no change in IV only underlying (use CalcIV): 0.5950201
+#
+# Work backwards:
+# book.price.p1 = 0.5927+2.675
+# ImpliedBSVol("call", 0.5, underly+1, 60, 0.0025, 0, 7/252, book.price.p1)
+# [1] 0.5842147
+# So knowing agg IV and IEV we can compute normal:
+# fNormIV(7, 1, 6, toOpt[11], 0.5842147)
+# [1] 0.2906087
+# check out the minus 1 though:
+#  book.price.m1 = 2.675-.5190
+#  ImpliedBSVol("call", 0.5, underly-1, 60, 0.0025, 0, 7/252, book.price.m1)
+# [1] 0.5872025
+#  fNormIV(7, 1, 6, toOpt[11], 0.5872025)
+# [1] 0.2975512
+# so IV rose more for the -1 dollar than it did the +1 dollar, which makes sense
+# do you get a new skew? 
+#   then put that in the new festniv? 
+#     then put that in agg iv?
+#  fOVVSkew(60, underly+1, 0, 7/252, uiMaxSkew)
+# [1] -0.1608252
+#  fSlopeParm(toOpt[7], toOpt[8], 7/252)
+# [1] 0.02396781
+#  fCurveParm(toOpt[9], toOpt[10], 7/252)
+# [1] 0.2091023
+ fEstNIV(fSlopeParm(toOpt[7], toOpt[8], 7/252),
+          fOVVSkew(60, underly+1, 0, 7/252, uiMaxSkew),
+          fCurveParm(toOpt[9], toOpt[10], 7/252),
+          fATMNIV(toOpt[1], toOpt[2], toOpt[3], 7/252))
+# [1] 0.2672747 # doesn't match ! see the first normal IV from start (0.2906087)
